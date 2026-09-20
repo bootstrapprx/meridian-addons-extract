@@ -1,0 +1,69 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <record id="poseidon_kernel_version_view_list" model="ir.ui.view">
+    <field name="name">poseidon.kernel.version.list</field>
+    <field name="model">poseidon.kernel.version</field>
+    <field name="arch" type="xml">
+      <list create="false" delete="false">
+        <field name="name"/>
+        <field name="kernel_version"/>
+        <field name="kernel_layer"/>
+        <field name="gaap_basis"/>
+        <field name="status"/>
+        <field name="effective_from"/>
+        <field name="installed_at"/>
+        <field name="checksum"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="poseidon_kernel_version_view_form" model="ir.ui.view">
+    <field name="name">poseidon.kernel.version.form</field>
+    <field name="model">poseidon.kernel.version</field>
+    <field name="arch" type="xml">
+      <form create="false" delete="false">
+        <sheet>
+          <group>
+            <group>
+              <field name="name"/>
+              <field name="kernel_version"/>
+              <field name="kernel_layer"/>
+              <field name="gaap_basis"/>
+            </group>
+            <group>
+              <field name="status"/>
+              <field name="effective_from"/>
+              <field name="installed_at"/>
+              <field name="active"/>
+            </group>
+          </group>
+          <group>
+            <field name="checksum"/>
+          </group>
+          <group>
+            <field name="notes" nolabel="1"/>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="poseidon_kernel_version_view_search" model="ir.ui.view">
+    <field name="name">poseidon.kernel.version.search</field>
+    <field name="model">poseidon.kernel.version</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="kernel_version"/>
+        <field name="kernel_layer"/>
+        <field name="gaap_basis"/>
+        <filter name="active" string="Active" domain="[('active', '=', True)]"/>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_poseidon_kernel_version" model="ir.actions.act_window">
+    <field name="name">Poseidon Kernel Versions</field>
+    <field name="res_model">poseidon.kernel.version</field>
+    <field name="view_mode">list,form</field>
+  </record>
+</odoo>

@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_move_form_vehicle_visible" model="ir.ui.view">
+        <field name="name">account.move.form.poseidon.vehicle</field>
+        <field name="model">account.move</field>
+        <field name="inherit_id" ref="account_fleet.view_move_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='invoice_line_ids']//field[@name='vehicle_id']" position="attributes">
+                <attribute name="optional">show</attribute>
+            </xpath>
+        </field>
+    </record>
+</odoo>

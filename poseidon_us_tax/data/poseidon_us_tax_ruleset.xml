@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+  <record id="poseidon_us_tax_ruleset_2026_pass_through_base" model="poseidon.us.tax.ruleset">
+    <field name="name">US Pass-through Planning Base 2026.1</field>
+    <field name="version">2026.1</field>
+    <field name="tax_year">2026</field>
+    <field name="jurisdiction">federal</field>
+    <field name="entity_type">all</field>
+    <field name="scope">PASS_THROUGH_BASE</field>
+    <field name="status">active</field>
+    <field name="rate_model">none</field>
+    <field name="flat_rate">0.0</field>
+    <field name="effective_from">2026-01-01</field>
+    <field name="effective_to">2026-12-31</field>
+    <field name="notes">Baseline planning ruleset ported from Aequitas empty-rule V1. Configure a versioned replacement ruleset for actual planning rates.</field>
+  </record>
+</odoo>

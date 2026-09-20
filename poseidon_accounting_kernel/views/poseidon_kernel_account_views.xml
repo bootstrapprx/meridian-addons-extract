@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="view_account_form_poseidon" model="ir.ui.view">
+        <field name="name">account.account.form.poseidon</field>
+        <field name="model">account.account</field>
+        <field name="inherit_id" ref="account.view_account_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//notebook" position="inside">
+                <page string="Poseidon Accounting Kernel" name="poseidon_kernel">
+                    <group>
+                        <group string="Kernel Metadata">
+                            <field name="poseidon_kernel_version_id" readonly="1"/>
+                            <field name="poseidon_kernel_layer" readonly="1"/>
+                            <field name="poseidon_kernel_code" readonly="1"/>
+                            <field name="poseidon_kernel_required" readonly="1"/>
+                        </group>
+                        <group string="Canonical Classification">
+                            <field name="poseidon_master_account_id" readonly="1"/>
+                            <field name="poseidon_account_category" readonly="1"/>
+                            <field name="poseidon_normal_balance" readonly="1"/>
+                            <field name="poseidon_fs_mapping" readonly="1"/>
+                            <field name="poseidon_parent_account_id" readonly="1"/>
+                        </group>
+                    </group>
+                    <group>
+                        <group string="QuickBooks Online Sync">
+                            <field name="qbo_standard_account_id" readonly="1"/>
+                            <field name="poseidon_qbo_push_approved"/>
+                        </group>
+                        <group string="Lock Status">
+                            <field name="poseidon_kernel_locked" readonly="1"/>
+                            <field name="poseidon_kernel_locked_at" readonly="1"/>
+                            <field name="poseidon_kernel_locked_by" readonly="1"/>
+                            <field name="poseidon_kernel_lock_reason" readonly="1"/>
+                        </group>
+                    </group>
+                </page>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="view_account_list_poseidon" model="ir.ui.view">
+        <field name="name">account.account.list.poseidon</field>
+        <field name="model">account.account</field>
+        <field name="inherit_id" ref="account.view_account_list"/>
+        <field name="arch" type="xml">
+            <xpath expr="//field[@name='account_type']" position="after">
+                <field name="poseidon_kernel_code" optional="hide"/>
+                <field name="poseidon_kernel_locked" widget="boolean_toggle" readonly="1" optional="show"/>
+                <field name="poseidon_qbo_push_approved" widget="boolean_toggle" optional="show"/>
+            </xpath>
+        </field>
+    </record>
+</odoo>

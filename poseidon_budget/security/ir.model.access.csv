@@ -1,0 +1,3 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_poseidon_budget_accountant,poseidon.budget accountant,om_account_budget.model_crossovered_budget,meridian_saas.group_meridian_saas_accountant,1,1,1,0
+access_poseidon_budget_lines_accountant,poseidon.budget.lines accountant,om_account_budget.model_crossovered_budget_lines,meridian_saas.group_meridian_saas_accountant,1,1,1,0

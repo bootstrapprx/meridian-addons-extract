@@ -1,0 +1,165 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <data noupdate="1">
+    <record id="poseidon_bank_bofa" model="res.bank">
+      <field name="name">Bank of America, N.A.</field>
+      <field name="bic">BOFAUS3N</field>
+      <field name="city">Charlotte</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_chase" model="res.bank">
+      <field name="name">JPMorgan Chase Bank, N.A.</field>
+      <field name="bic">CHASUS36</field>
+      <field name="city">New York</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_citi" model="res.bank">
+      <field name="name">Citibank, N.A.</field>
+      <field name="bic">CITIUS33</field>
+      <field name="city">New York</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_wells_fargo" model="res.bank">
+      <field name="name">Wells Fargo Bank, National Association</field>
+      <field name="bic">WFBIUS6S</field>
+      <field name="city">San Francisco</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_capital_one" model="res.bank">
+      <field name="name">Capital One, National Association</field>
+      <field name="city">McLean</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_us_bank" model="res.bank">
+      <field name="name">U.S. Bank, National Association</field>
+      <field name="city">Cincinnati</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_pnc" model="res.bank">
+      <field name="name">PNC Bank, National Association</field>
+      <field name="bic">PNCCUS33</field>
+      <field name="city">Pittsburgh</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_td" model="res.bank">
+      <field name="name">TD Bank, N.A.</field>
+      <field name="bic">NRTHUS33</field>
+      <field name="city">Mount Laurel</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_truist" model="res.bank">
+      <field name="name">Truist Bank</field>
+      <field name="city">Charlotte</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_fifth_third" model="res.bank">
+      <field name="name">Fifth Third Bank, National Association</field>
+      <field name="city">Cincinnati</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_keybank" model="res.bank">
+      <field name="name">KeyBank, National Association</field>
+      <field name="city">Cleveland</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_regions" model="res.bank">
+      <field name="name">Regions Bank</field>
+      <field name="city">Birmingham</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_citizens" model="res.bank">
+      <field name="name">Citizens Bank, National Association</field>
+      <field name="city">Providence</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_huntington" model="res.bank">
+      <field name="name">The Huntington National Bank</field>
+      <field name="city">Columbus</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_mt" model="res.bank">
+      <field name="name">M&amp;T Bank</field>
+      <field name="city">Buffalo</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_first_citizens" model="res.bank">
+      <field name="name">First Citizens Bank</field>
+      <field name="city">Raleigh</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_bmo" model="res.bank">
+      <field name="name">BMO Bank, N.A.</field>
+      <field name="city">Chicago</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_santander" model="res.bank">
+      <field name="name">Santander Bank, N.A.</field>
+      <field name="bic">BSCHUS33</field>
+      <field name="city">Boston</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_ally" model="res.bank">
+      <field name="name">Ally Bank</field>
+      <field name="city">Sandy</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_synchrony" model="res.bank">
+      <field name="name">Synchrony Bank</field>
+      <field name="city">Stamford</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_usaa" model="res.bank">
+      <field name="name">USAA Federal Savings Bank</field>
+      <field name="city">San Antonio</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_amex_national" model="res.bank">
+      <field name="name">American Express National Bank</field>
+      <field name="city">New York</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_discover" model="res.bank">
+      <field name="name">Discover Bank</field>
+      <field name="city">Greenwood</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_bank_mercury" model="res.bank">
+      <field name="name">Mercury</field>
+      <field name="bic">MRCYUS33</field>
+      <field name="city">San Francisco</field>
+      <field name="country" ref="base.us"/>
+    </record>
+    <record id="poseidon_card_visa" model="res.bank">
+      <field name="name">Visa</field>
+      <field name="institution_category">card_provider</field>
+    </record>
+    <record id="poseidon_card_mastercard" model="res.bank">
+      <field name="name">Mastercard</field>
+      <field name="institution_category">card_provider</field>
+    </record>
+    <record id="poseidon_card_amex" model="res.bank">
+      <field name="name">American Express</field>
+      <field name="institution_category">card_provider</field>
+    </record>
+    <record id="poseidon_card_discover" model="res.bank">
+      <field name="name">Discover</field>
+      <field name="institution_category">card_provider</field>
+    </record>
+    <record id="poseidon_card_brex" model="res.bank">
+      <field name="name">Brex</field>
+      <field name="institution_category">card_provider</field>
+    </record>
+    <record id="poseidon_card_ramp" model="res.bank">
+      <field name="name">Ramp</field>
+      <field name="institution_category">card_provider</field>
+    </record>
+    <record id="poseidon_card_stripe" model="res.bank">
+      <field name="name">Stripe</field>
+      <field name="institution_category">card_provider</field>
+    </record>
+    <record id="poseidon_card_divvy" model="res.bank">
+      <field name="name">BILL Divvy</field>
+      <field name="institution_category">card_provider</field>
+    </record>
+  </data>
+</odoo>

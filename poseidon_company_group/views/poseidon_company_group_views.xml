@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <record id="poseidon_company_group_view_list" model="ir.ui.view">
+    <field name="name">poseidon.company.group.list</field>
+    <field name="model">poseidon.company.group</field>
+    <field name="arch" type="xml">
+      <list>
+        <field name="name"/>
+        <field name="code"/>
+        <field name="currency_id"/>
+        <field name="holding_company_id"/>
+        <field name="member_count"/>
+        <field name="active"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="poseidon_company_group_view_form" model="ir.ui.view">
+    <field name="name">poseidon.company.group.form</field>
+    <field name="model">poseidon.company.group</field>
+    <field name="arch" type="xml">
+      <form>
+        <sheet>
+          <group>
+            <group>
+              <field name="name"/>
+              <field name="code"/>
+              <field name="currency_id"/>
+            </group>
+            <group>
+              <field name="holding_company_id"/>
+              <field name="member_count"/>
+              <field name="active"/>
+            </group>
+          </group>
+          <notebook>
+            <page string="Members" name="members">
+              <field name="member_ids">
+                <list editable="bottom">
+                  <field name="sequence" widget="handle"/>
+                  <field name="company_id"/>
+                  <field name="role"/>
+                  <field name="active"/>
+                  <field name="note"/>
+                </list>
+              </field>
+            </page>
+            <page string="Notes" name="notes">
+              <field name="note" nolabel="1"/>
+            </page>
+          </notebook>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="poseidon_company_group_view_search" model="ir.ui.view">
+    <field name="name">poseidon.company.group.search</field>
+    <field name="model">poseidon.company.group</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="name"/>
+        <field name="code"/>
+        <field name="holding_company_id"/>
+        <filter name="active" string="Active" domain="[('active', '=', True)]"/>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_poseidon_company_group" model="ir.actions.act_window">
+    <field name="name">Poseidon Company Groups</field>
+    <field name="res_model">poseidon.company.group</field>
+    <field name="view_mode">list,form</field>
+  </record>
+
+  <menuitem
+    id="menu_poseidon_accounting"
+    name="Poseidon"
+    parent="account.menu_finance_configuration"
+    groups="account.group_account_manager"
+    sequence="80"/>
+
+  <menuitem
+    id="menu_poseidon_company_group"
+    name="Company Groups"
+    parent="menu_poseidon_accounting"
+    action="action_poseidon_company_group"
+    groups="account.group_account_manager"
+    sequence="10"/>
+</odoo>

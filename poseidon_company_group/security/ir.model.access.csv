@@ -1,0 +1,5 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_poseidon_company_group_user,poseidon.company.group user,model_poseidon_company_group,base.group_user,1,0,0,0
+access_poseidon_company_group_admin,poseidon.company.group admin,model_poseidon_company_group,base.group_system,1,1,1,1
+access_poseidon_group_member_user,poseidon.group.member user,model_poseidon_group_member,base.group_user,1,0,0,0
+access_poseidon_group_member_admin,poseidon.group.member admin,model_poseidon_group_member,base.group_system,1,1,1,1

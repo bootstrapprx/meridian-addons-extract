@@ -1,0 +1,25 @@
+{
+    "name": "Poseidon Cost Center",
+    "version": "19.0.1.1.0",
+    "category": "Poseidon/Accounting",
+    "summary": "Cost center and operational object analytic plans with Meridian RPCs",
+    "author": "Kodoo",
+    "license": "LGPL-3",
+    "depends": [
+        "account_fleet",
+        "analytic",
+        "hr",
+        "hr_expense",
+        "hr_timesheet",
+        "industry_real_estate",
+        "maintenance",
+        "om_account_budget",
+        "project_account",
+    ],
+    "data": [
+        "data/account_analytic_plan.xml",
+        "views/account_move_views.xml",
+    ],
+    "installable": True,
+    "application": False,
+}

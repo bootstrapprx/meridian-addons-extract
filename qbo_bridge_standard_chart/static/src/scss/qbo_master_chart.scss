@@ -1,0 +1,42 @@
+$qbo-master-chart-colors: (
+    "asset": #0d6efd,
+    "liability": #dc3545,
+    "equity": #198754,
+    "revenue": #0dcaf0,
+    "cost-of-goods-sold": #fd7e14,
+    "expense": #ffc107,
+    "other": #6c757d
+);
+
+.qbo_master_chart_kanban {
+    .o_kanban_record {
+        border-radius: 14px;
+        overflow: hidden;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow: 0 8px 22px rgba(15, 23, 42, 0.06);
+    }
+
+    @each $slug, $color in $qbo-master-chart-colors {
+        .qbo_mc_card_#{$slug} {
+            border-top: 4px solid $color;
+        }
+
+        .qbo_mc_dash_#{$slug} {
+            background: linear-gradient(135deg, rgba($color, 0.18), rgba(255, 255, 255, 0.98));
+            border-left: 5px solid $color;
+        }
+    }
+
+    .qbo_mc_meta {
+        min-height: 2.5rem;
+    }
+}
+
+.qbo_master_chart_dashboard {
+    .o_kanban_record {
+        border-radius: 16px;
+        overflow: hidden;
+        border: 1px solid rgba(15, 23, 42, 0.08);
+        box-shadow: 0 10px 24px rgba(15, 23, 42, 0.08);
+    }
+}

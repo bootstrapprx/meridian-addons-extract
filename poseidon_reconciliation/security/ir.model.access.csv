@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_poseidon_bank_statement_line_user,poseidon.bank.statement.line user,model_poseidon_bank_statement_line,base.group_user,1,0,0,0
+access_poseidon_bank_statement_line_manager,poseidon.bank.statement.line manager,model_poseidon_bank_statement_line,account.group_account_manager,1,1,1,0
+access_poseidon_bank_statement_line_admin,poseidon.bank.statement.line admin,model_poseidon_bank_statement_line,base.group_system,1,1,1,1
+access_poseidon_reconciliation_suggestion_user,poseidon.reconciliation.suggestion user,model_poseidon_reconciliation_suggestion,base.group_user,1,0,0,0
+access_poseidon_reconciliation_suggestion_manager,poseidon.reconciliation.suggestion manager,model_poseidon_reconciliation_suggestion,account.group_account_manager,1,1,1,0
+access_poseidon_reconciliation_suggestion_admin,poseidon.reconciliation.suggestion admin,model_poseidon_reconciliation_suggestion,base.group_system,1,1,1,1

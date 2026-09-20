@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <!-- usgaap loads after every optional accounting/QBO dependency. -->
+    <function model="kodoo.mcp.bundle" name="_ensure_seed_bundles"/>
+    <function model="kodoo.mcp.model" name="_ensure_seed_models"/>
+</odoo>

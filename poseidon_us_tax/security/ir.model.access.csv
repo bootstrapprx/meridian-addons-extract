@@ -1,0 +1,13 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_poseidon_us_tax_profile_user,poseidon.us.tax.profile user,model_poseidon_us_tax_profile,base.group_user,1,0,0,0
+access_poseidon_us_tax_profile_manager,poseidon.us.tax.profile manager,model_poseidon_us_tax_profile,account.group_account_manager,1,1,1,0
+access_poseidon_us_tax_profile_admin,poseidon.us.tax.profile admin,model_poseidon_us_tax_profile,base.group_system,1,1,1,1
+access_poseidon_us_tax_ruleset_user,poseidon.us.tax.ruleset user,model_poseidon_us_tax_ruleset,base.group_user,1,0,0,0
+access_poseidon_us_tax_ruleset_manager,poseidon.us.tax.ruleset manager,model_poseidon_us_tax_ruleset,account.group_account_manager,1,1,1,0
+access_poseidon_us_tax_ruleset_admin,poseidon.us.tax.ruleset admin,model_poseidon_us_tax_ruleset,base.group_system,1,1,1,1
+access_poseidon_us_tax_fact_user,poseidon.us.tax.fact user,model_poseidon_us_tax_fact,base.group_user,1,0,0,0
+access_poseidon_us_tax_fact_manager,poseidon.us.tax.fact manager,model_poseidon_us_tax_fact,account.group_account_manager,1,1,1,0
+access_poseidon_us_tax_fact_admin,poseidon.us.tax.fact admin,model_poseidon_us_tax_fact,base.group_system,1,1,1,1
+access_poseidon_us_tax_forecast_user,poseidon.us.tax.forecast user,model_poseidon_us_tax_forecast,base.group_user,1,0,0,0
+access_poseidon_us_tax_forecast_manager,poseidon.us.tax.forecast manager,model_poseidon_us_tax_forecast,account.group_account_manager,1,1,1,0
+access_poseidon_us_tax_forecast_admin,poseidon.us.tax.forecast admin,model_poseidon_us_tax_forecast,base.group_system,1,1,1,1

@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <function model="qbo.standard.account" name="bootstrap_default_poseidon_kernel"/>
+</odoo>

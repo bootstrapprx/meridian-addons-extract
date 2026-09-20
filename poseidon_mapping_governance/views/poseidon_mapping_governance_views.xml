@@ -1,0 +1,174 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <record id="poseidon_mapping_decision_view_list" model="ir.ui.view">
+    <field name="name">poseidon.mapping.decision.list</field>
+    <field name="model">poseidon.mapping.decision</field>
+    <field name="arch" type="xml">
+      <list>
+        <field name="decision_at"/>
+        <field name="company_id"/>
+        <field name="qbo_account_number"/>
+        <field name="qbo_account_name"/>
+        <field name="destination_account_id"/>
+        <field name="bridge_rule_id"/>
+        <field name="state"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="poseidon_mapping_decision_view_form" model="ir.ui.view">
+    <field name="name">poseidon.mapping.decision.form</field>
+    <field name="model">poseidon.mapping.decision</field>
+    <field name="arch" type="xml">
+      <form>
+        <header>
+          <button
+            name="action_open_propagation_wizard"
+            type="object"
+            string="Propagate to Group"
+            class="btn-primary"
+            invisible="state != 'confirmed'"/>
+          <field name="state" widget="statusbar" statusbar_visible="pending,confirmed,rejected"/>
+        </header>
+        <sheet>
+          <group>
+            <group>
+              <field name="company_id"/>
+              <field name="source_account_id"/>
+              <field name="destination_account_id"/>
+              <field name="bridge_rule_id"/>
+            </group>
+            <group>
+              <field name="qbo_id"/>
+              <field name="qbo_account_number"/>
+              <field name="qbo_account_name"/>
+              <field name="qbo_account_type"/>
+              <field name="qbo_account_subtype"/>
+            </group>
+          </group>
+          <group>
+            <field name="decision_at"/>
+            <field name="decision_by_id"/>
+          </group>
+          <field name="reason" placeholder="Decision reason or propagation note"/>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="poseidon_mapping_decision_view_search" model="ir.ui.view">
+    <field name="name">poseidon.mapping.decision.search</field>
+    <field name="model">poseidon.mapping.decision</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="qbo_account_name"/>
+        <field name="qbo_account_number"/>
+        <field name="company_id"/>
+        <field name="destination_account_id"/>
+        <filter name="confirmed" string="Confirmed" domain="[('state', '=', 'confirmed')]"/>
+        <filter name="rejected" string="Rejected" domain="[('state', '=', 'rejected')]"/>
+        <filter name="pending" string="Pending" domain="[('state', '=', 'pending')]"/>
+      </search>
+    </field>
+  </record>
+
+  <record id="poseidon_mapping_propagation_view_list" model="ir.ui.view">
+    <field name="name">poseidon.mapping.propagation.list</field>
+    <field name="model">poseidon.mapping.propagation</field>
+    <field name="arch" type="xml">
+      <list>
+        <field name="create_date"/>
+        <field name="decision_id"/>
+        <field name="group_id"/>
+        <field name="source_company_id"/>
+        <field name="mode"/>
+        <field name="state"/>
+        <field name="previewed_at"/>
+        <field name="committed_at"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="poseidon_mapping_propagation_view_form" model="ir.ui.view">
+    <field name="name">poseidon.mapping.propagation.form</field>
+    <field name="model">poseidon.mapping.propagation</field>
+    <field name="arch" type="xml">
+      <form>
+        <header>
+          <button name="action_build_preview" type="object" string="Build Preview" class="btn-secondary" invisible="state not in ('draft', 'previewed', 'blocked')"/>
+          <button name="action_commit" type="object" string="Commit Reviewed Propagation" class="btn-primary" invisible="state != 'previewed'"/>
+          <field name="state" widget="statusbar" statusbar_visible="draft,previewed,applied,blocked"/>
+        </header>
+        <sheet>
+          <group>
+            <group>
+              <field name="decision_id"/>
+              <field name="group_id"/>
+              <field name="source_company_id"/>
+            </group>
+            <group>
+              <field name="mode"/>
+              <field name="previewed_at"/>
+              <field name="committed_at"/>
+              <field name="created_by_id"/>
+            </group>
+          </group>
+          <notebook>
+            <page string="Preview" name="preview">
+              <field name="line_ids">
+                <list>
+                  <field name="company_id"/>
+                  <field name="status"/>
+                  <field name="source_account_id"/>
+                  <field name="target_account_id"/>
+                  <field name="existing_decision_id"/>
+                  <field name="existing_rule_id"/>
+                  <field name="new_rule_id"/>
+                  <field name="message"/>
+                </list>
+              </field>
+            </page>
+            <page string="Notes" name="notes">
+              <field name="note" nolabel="1"/>
+            </page>
+          </notebook>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="action_poseidon_mapping_decision" model="ir.actions.act_window">
+    <field name="name">Mapping Decisions</field>
+    <field name="res_model">poseidon.mapping.decision</field>
+    <field name="view_mode">list,form</field>
+  </record>
+
+  <record id="action_poseidon_mapping_propagation" model="ir.actions.act_window">
+    <field name="name">Mapping Propagations</field>
+    <field name="res_model">poseidon.mapping.propagation</field>
+    <field name="view_mode">list,form</field>
+  </record>
+
+  <menuitem
+    id="menu_poseidon_mapping_governance"
+    name="Mapping Governance"
+    parent="poseidon_company_group.menu_poseidon_accounting"
+    groups="account.group_account_manager"
+    sequence="20"/>
+
+  <menuitem
+    id="menu_poseidon_mapping_decision"
+    name="Decisions"
+    parent="menu_poseidon_mapping_governance"
+    action="action_poseidon_mapping_decision"
+    groups="account.group_account_manager"
+    sequence="10"/>
+
+  <menuitem
+    id="menu_poseidon_mapping_propagation"
+    name="Propagations"
+    parent="menu_poseidon_mapping_governance"
+    action="action_poseidon_mapping_propagation"
+    groups="account.group_account_manager"
+    sequence="20"/>
+</odoo>

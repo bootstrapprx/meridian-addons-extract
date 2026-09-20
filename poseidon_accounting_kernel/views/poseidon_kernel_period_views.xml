@@ -1,0 +1,71 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <record id="poseidon_kernel_period_view_list" model="ir.ui.view">
+    <field name="name">poseidon.kernel.period.list</field>
+    <field name="model">poseidon.kernel.period</field>
+    <field name="arch" type="xml">
+      <list>
+        <field name="name"/>
+        <field name="company_id"/>
+        <field name="date_from"/>
+        <field name="date_to"/>
+        <field name="state"/>
+        <field name="lock_date_applied"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="poseidon_kernel_period_view_form" model="ir.ui.view">
+    <field name="name">poseidon.kernel.period.form</field>
+    <field name="model">poseidon.kernel.period</field>
+    <field name="arch" type="xml">
+      <form>
+        <header>
+          <button name="action_close_period" type="object" string="Close" invisible="state != 'open'"/>
+          <button name="action_lock_period" type="object" string="Lock" invisible="state != 'closed'"/>
+          <field name="state" widget="statusbar" statusbar_visible="open,closed,locked"/>
+        </header>
+        <sheet>
+          <group>
+            <group>
+              <field name="name"/>
+              <field name="company_id"/>
+              <field name="date_from"/>
+              <field name="date_to"/>
+            </group>
+            <group>
+              <field name="closed_at"/>
+              <field name="closed_by_id"/>
+              <field name="locked_at"/>
+              <field name="locked_by_id"/>
+              <field name="lock_date_applied"/>
+            </group>
+          </group>
+          <group>
+            <field name="note" nolabel="1"/>
+          </group>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="poseidon_kernel_period_view_search" model="ir.ui.view">
+    <field name="name">poseidon.kernel.period.search</field>
+    <field name="model">poseidon.kernel.period</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="name"/>
+        <field name="company_id"/>
+        <filter name="open" string="Open" domain="[('state', '=', 'open')]"/>
+        <filter name="closed" string="Closed" domain="[('state', 'in', ['closed', 'locked'])]"/>
+        <filter name="group_company" string="Company" context="{'group_by': 'company_id'}"/>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_poseidon_kernel_period" model="ir.actions.act_window">
+    <field name="name">Poseidon Fiscal Periods</field>
+    <field name="res_model">poseidon.kernel.period</field>
+    <field name="view_mode">list,form</field>
+  </record>
+</odoo>

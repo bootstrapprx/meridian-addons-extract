@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+    <record id="analytic_plan_cost_center" model="account.analytic.plan">
+        <field name="name">Cost Center</field>
+        <field name="sequence">20</field>
+    </record>
+
+    <record id="applicability_cost_center_bill" model="account.analytic.applicability">
+        <field name="analytic_plan_id" ref="analytic_plan_cost_center"/>
+        <field name="business_domain">bill</field>
+        <field name="applicability">mandatory</field>
+        <field name="account_prefix">5,6</field>
+        <field name="company_id" eval="False"/>
+    </record>
+    <record id="applicability_cost_center_invoice" model="account.analytic.applicability">
+        <field name="analytic_plan_id" ref="analytic_plan_cost_center"/>
+        <field name="business_domain">invoice</field>
+        <field name="applicability">mandatory</field>
+        <field name="account_prefix">4</field>
+        <field name="company_id" eval="False"/>
+    </record>
+    <record id="applicability_cost_center_timesheet" model="account.analytic.applicability">
+        <field name="analytic_plan_id" ref="analytic_plan_cost_center"/>
+        <field name="business_domain">timesheet</field>
+        <field name="applicability">mandatory</field>
+        <field name="company_id" eval="False"/>
+    </record>
+
+    <function model="account.analytic.plan" name="_poseidon_adopt_object_plan"/>
+</odoo>

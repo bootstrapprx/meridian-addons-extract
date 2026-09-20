@@ -1,0 +1,6 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+access_meridian_saas_request,meridian.saas.request,model_meridian_saas_request,base.group_user,1,1,1,1
+access_meridian_saas_event,meridian.saas.event,model_meridian_saas_event,base.group_user,1,1,1,1
+access_meridian_saas_request_manager,meridian.saas.request.manager,model_meridian_saas_request,meridian_saas.group_meridian_saas_manager,1,1,1,1
+access_meridian_saas_event_manager,meridian.saas.event.manager,model_meridian_saas_event,meridian_saas.group_meridian_saas_manager,1,1,1,1
+access_meridian_saas_tenant_db_manager,meridian.saas.tenant_db.manager,model_meridian_saas_tenant_db,meridian_saas.group_meridian_saas_manager,1,0,0,0

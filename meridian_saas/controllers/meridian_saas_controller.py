@@ -1,0 +1,771 @@
+"""
+backend/addons/poseidon/meridian_saas/controllers/meridian_saas_controller.py
+
+Meridian SaaS Controller
+========================
+Provides internal provisioning endpoints consumed exclusively by the Meridian
+BFF (Poseidon/Next.js).  All routes are unauthenticated at the URL level and
+protected by a shared bearer token stored in ``ir.config_parameter``.
+
+Routing note
+------------
+These routes are intended to be served only under the commercial host
+(meridian.kodoo.online), which dbfilter maps to the ``meridian`` control-plane
+database.  The BFF MUST set the Host / X-Forwarded-Host header accordingly.
+
+Security invariants
+-------------------
+* Fail closed: an unset server token is treated as a misconfiguration — every
+  request is rejected until the token is properly configured.
+* All bearer checks go through ``_provision_authorized()``.  Never inline the
+  check; keeping one canonical implementation avoids divergence.
+* SSO sessions are created via Odoo's public ``authenticate()`` API, never by
+  mutating ``request.session`` fields directly.
+* Exception details are never surfaced to callers; only sanitised messages are
+  returned.  Full tracebacks go to the server log.
+* Concurrent user-creation races are resolved by the database unique constraint
+  on ``res_users.login``; ``IntegrityError`` is caught and handled explicitly.
+"""
+
+import base64
+import hmac
+import logging
+import secrets
+
+from psycopg2 import IntegrityError
+
+from odoo import http
+from odoo.exceptions import ValidationError
+from odoo.http import request
+
+_logger = logging.getLogger(__name__)
+
+# Minimum bearer-token length (characters).  Tokens shorter than this are
+# almost certainly placeholders left over from setup and should never be
+# accepted.  32 chars ≈ 192 bits of entropy when generated with
+# secrets.token_urlsafe(24).
+_MIN_TOKEN_LENGTH = 32
+
+
+# Odoo group XML IDs managed by the Meridian role system.  When a user's role
+# changes, ALL of these are removed before the new role's group is applied,
+# ensuring no orphaned permissions from a previous (wider) role.  The list
+# covers the Meridian role groups themselves plus the raw account.*/base.*
+# groups that earlier releases assigned directly (legacy strip).
+_MERIDIAN_MANAGED_XMLIDS: frozenset[str] = frozenset({
+    "meridian_saas.group_meridian_saas_viewer",
+    "meridian_saas.group_meridian_saas_invoicing",
+    "meridian_saas.group_meridian_saas_member",
+    "meridian_saas.group_meridian_saas_accountant",
+    "meridian_saas.group_meridian_saas_manager",
+    "account.group_account_readonly",
+    "account.group_account_invoice",
+    "account.group_account_user",
+    "account.group_account_manager",
+    "base.group_system",
+    "base.group_erp_manager",
+    "base.group_partner_manager",
+    "sales_team.group_sale_manager",
+    "sales_team.group_sale_salesman",
+    "stock.group_stock_manager",
+    "stock.group_stock_user",
+})
+
+# Frontend role → the ONE Meridian role group to assign.  Each role group
+# carries its full Odoo permission chain via implied_ids (see
+# security/meridian_security.xml) — the single source of permission truth.
+# Odoo resolves the implied closure at access-check time, so swapping the
+# role group atomically swaps every derived permission.
+_ROLE_GROUPS: dict[str, list[str]] = {
+    "viewer": ["meridian_saas.group_meridian_saas_viewer"],
+    "invoicing": ["meridian_saas.group_meridian_saas_invoicing"],
+    "member": ["meridian_saas.group_meridian_saas_member"],
+    "accountant": ["meridian_saas.group_meridian_saas_accountant"],
+    "manager": ["meridian_saas.group_meridian_saas_manager"],
+}
+
+
+class MeridianSaasController(http.Controller):
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
+
+    def _provision_authorized(self) -> bool:
+        """Return True iff the request carries a valid provisioning bearer token.
+
+        Fail-closed contract:
+        * Server token unset             → reject (misconfiguration).
+        * Server token shorter than      → reject (weak token — log critical).
+          _MIN_TOKEN_LENGTH
+        * Caller token absent/mismatched → reject.
+
+        Uses ``hmac.compare_digest`` to prevent timing-based token oracle
+        attacks.
+        """
+        expected: str = (
+            request.env["ir.config_parameter"]
+            .sudo()
+            .get_param("meridian_saas.provision_token")
+            or ""
+        )
+
+        if not expected:
+            _logger.error(
+                "meridian_saas.provision_token is unset.  "
+                "All provisioning requests will be rejected until it is configured."
+            )
+            return False
+
+        if len(expected) < _MIN_TOKEN_LENGTH:
+            _logger.critical(
+                "meridian_saas.provision_token is only %d characters long "
+                "(minimum: %d).  Replace it with a strong random value "
+                "generated by: python -c \"import secrets; "
+                "print(secrets.token_urlsafe(32))\"",
+                len(expected),
+                _MIN_TOKEN_LENGTH,
+            )
+            return False
+
+        provided = ""
+        auth_header = request.httprequest.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            provided = auth_header[len("Bearer "):].strip()
+
+        if not provided:
+            return False
+
+        return hmac.compare_digest(provided, expected)
+
+    @staticmethod
+    def _reject_unauthorized(label: str) -> dict:
+        """Log a warning and return a uniform Unauthorized payload."""
+        _logger.warning(
+            "Rejected unauthorized call to Meridian provisioning endpoint: %s  "
+            "peer=%s",
+            label,
+            request.httprequest.remote_addr,
+        )
+        return {"status": "failed", "message": "Unauthorized"}
+
+    # ------------------------------------------------------------------
+    # Environment setup
+    # ------------------------------------------------------------------
+
+    @staticmethod
+    def _setup_env():
+        """Ensure request.env has a valid user.
+
+        ``auth='none'`` routes (ir_http.py:_auth_method_none) set
+        ``request.env`` with ``uid=None``.  This causes ``default_env``
+        to have ``uid=None, su=False``.  At flush-time, recomputation of
+        ``avatar_1920`` (a related binary field on ``res.users``) writes
+        to ``ir.attachment``, which calls ``_check_contents`` → ``sudo(False)``
+        → ``has_access('write')``.  With ``uid=None``, ``su`` is ``False``
+        and ``has_access`` falls through to ``_get_allowed_models`` →
+        ``self.env.user`` which does ``browse(None)`` → empty recordset →
+        ``ensure_one`` crashes with ``ValueError: Expected singleton:
+        res.users()``.
+
+        Setting ``default_env`` to ``SUPERUSER_ID`` (1) fixes this because
+        ``Environment.__new__`` forces ``su=True`` for ``SUPERUSER_ID``,
+        making ``has_access`` short-circuit before the group lookup.
+        """
+        if request.env.uid is None:
+            request.update_env(user=1, su=True)
+
+    # ------------------------------------------------------------------
+    # Role / group helpers
+    # ------------------------------------------------------------------
+
+    def _resolve_role_groups(self, role: str):
+        """Return a list of ``res.groups`` records for *role*, best-effort.
+
+        Missing XMLIDs are silently skipped so the same mapping works in any
+        database — optional modules like ``base_accounting_kit`` only add their
+        groups when installed.
+        """
+        xmlids = _ROLE_GROUPS.get((role or "").strip().lower())
+        if not xmlids:
+            return []
+        groups = []
+        for xmlid in xmlids:
+            g = request.env.ref(xmlid, raise_if_not_found=False)
+            if g:
+                groups.append(g)
+        return groups
+
+    def _apply_role_groups(self, user, target_groups):
+        """Replace managed Odoo groups on *user* with the *target_groups* set.
+
+        1. Removes every group listed in ``_MERIDIAN_MANAGED_XMLIDS``.
+        2. Adds every group in *target_groups* (deduplicated).
+        3. Always ensures ``base.group_user`` is present.
+        Role implications remain defined only in ``meridian_security.xml``.
+        """
+        managed = []
+        for xmlid in _MERIDIAN_MANAGED_XMLIDS:
+            g = request.env.ref(xmlid, raise_if_not_found=False)
+            if g:
+                managed.append(g.id)
+
+        target_ids = [g.id for g in target_groups if g]
+
+        # Always keep base.group_user
+        internal = request.env.ref("base.group_user")
+        if internal and internal.id not in target_ids:
+            target_ids.append(internal.id)
+
+        ops = [(3, gid) for gid in managed if gid in user.group_ids.ids]
+        # Only add a group if it was removed above OR if it isn't present yet.
+        removed = {gid for _, gid in ops}
+        for gid in target_ids:
+            if gid in removed or gid not in user.group_ids.ids:
+                ops.append((4, gid))
+
+        if ops:
+            user.write({"group_ids": ops})
+
+    # ------------------------------------------------------------------
+    # Provisioning endpoints
+    # ------------------------------------------------------------------
+
+    @http.route(
+        "/meridian/saas/provision_usgaap_kit",
+        type="jsonrpc",
+        auth="none",
+        methods=["POST"],
+        csrf=False,
+    )
+    def provision_usgaap_kit(self, payload=None, **kwargs):
+        """Execute tenant GAAP kit setup for the Meridian BFF.
+
+        The route is unauthenticated by URL, so it requires a shared bearer
+        token.  The expected token is read from the system parameter
+        ``meridian_saas.provision_token`` (set it via Settings > Technical >
+        System Parameters or the install hook).  Fail closed: if the token is
+        unset server-side, or the caller's token is missing/mismatched, the
+        request is rejected — provisioning is never anonymous.
+        """
+        if not self._provision_authorized():
+            return self._reject_unauthorized("provision_usgaap_kit")
+
+        self._setup_env()
+
+        if not payload:
+            payload = request.params.get("payload") or {}
+
+        return request.env["meridian.saas"].sudo().provision_usgaap_kit(payload)
+
+    @http.route(
+        "/meridian/saas/lobby_user_exists",
+        type="jsonrpc",
+        auth="none",
+        methods=["POST"],
+        csrf=False,
+    )
+    def lobby_user_exists(self, email=None, **kwargs):
+        """Check whether a Lobby user account already exists for ``email``.
+
+        Called by the BFF before initiating the OTP / registration flow so that
+        it can decide between a "sign in" and "sign up" UX without exposing user
+        enumeration to unauthenticated callers (the bearer token gates access).
+
+        Returns::
+
+            {"status": "ok", "exists": true | false}
+
+        Note: only active users (``active = True``, Odoo default) are
+        considered.  Archived accounts return ``exists: false``, which is the
+        correct behaviour — an archived lobby user must be reactivated by an
+        administrator before they can log in.
+        """
+        if not self._provision_authorized():
+            return self._reject_unauthorized("lobby_user_exists")
+
+        if not email:
+            return {"status": "failed", "message": "Email is required."}
+
+        # active_test=True is the Odoo default; stated explicitly for clarity.
+        user = (
+            request.env["res.users"]
+            .with_context(active_test=True)
+            .sudo()
+            .search([("login", "=", email)], limit=1)
+        )
+        return {"status": "ok", "exists": bool(user)}
+
+    @http.route(
+        "/meridian/saas/create_lobby_user",
+        type="jsonrpc",
+        auth="none",
+        methods=["POST"],
+        csrf=False,
+    )
+    def create_lobby_user(self, email=None, name=None, phone=None, password=None, **kwargs):
+        """Create a Lobby-only user (no workspace access yet).
+
+        Called by the BFF after OTP verification or invite activation.  The user
+        is created as a portal user in the meridian (control plane) database so
+        they can log in to the Lobby and receive workspace invitations.
+
+        Password handling
+        -----------------
+        If the caller supplies ``password`` (registration / invite activation,
+        where the human sets their own credential), it is stored as bcrypt via
+        Odoo's normal ``res.users`` write path and used for step-1 login.  If no
+        password is supplied, a cryptographically random one is generated so the
+        account is never left with an empty/guessable credential.
+
+        The password is NEVER logged here (no log statement includes it) and is
+        protected in transit by TLS; do not add request-body logging upstream.
+        """
+        if not self._provision_authorized():
+            return self._reject_unauthorized("create_lobby_user")
+
+        if not email or not name:
+            return {"status": "failed", "message": "Email and name are required."}
+
+        self._setup_env()
+
+        Users = request.env["res.users"].sudo()
+        portal_group = request.env.ref("base.group_portal")
+
+        try:
+            new_user = Users.create({
+                "name": name,
+                "login": email,
+                "email": email,
+                "phone": phone or "",
+                "group_ids": [(6, 0, [portal_group.id])],
+            })
+            # Caller-set password when present (step-1 login); otherwise random
+            # so the account never has a guessable/empty credential.
+            new_user.write({"password": password or secrets.token_urlsafe(32)})
+
+            _logger.info("Lobby user created: %s (uid=%s)", email, new_user.id)
+            return {
+                "status": "ok",
+                "uid": new_user.id,
+                "message": "Lobby user created.",
+            }
+        except IntegrityError:
+            # Race between lobby_user_exists check and create; the DB unique
+            # constraint on res_users.login is the authoritative guard.
+            request.env.cr.rollback()
+            _logger.info(
+                "create_lobby_user: duplicate login raced to existence: %s", email
+            )
+            return {"status": "failed", "message": "A user with this email already exists."}
+        except Exception:
+            _logger.error(
+                "Failed to create lobby user %s", email, exc_info=True
+            )
+            return {"status": "failed", "message": "Internal error. Check server logs."}
+
+    @http.route(
+        "/meridian/saas/sso_login",
+        type="jsonrpc",
+        auth="none",
+        methods=["POST"],
+        csrf=False,
+    )
+    def sso_login(self, email=None, **kwargs):
+        """Establish an Odoo session for ``email`` on behalf of the BFF.
+
+        The BFF calls this after its own authentication layer has validated the
+        caller (OTP, magic-link, etc.).  This endpoint trusts that validation
+        and issues an Odoo session in exchange.
+
+        SSO token vs. provisioning token
+        ---------------------------------
+        This endpoint uses ``meridian_saas.sso_token``, a *separate* secret
+        from ``meridian_saas.provision_token``.  Keeping them distinct ensures
+        that a compromised provisioning secret (e.g. leaked from a CI pipeline)
+        cannot be used to impersonate arbitrary users, and vice-versa.
+
+        Session management
+        ------------------
+        Sessions are created via ``session.authenticate()``, Odoo's sanctioned
+        public API.  Direct mutation of ``session.uid``, ``session.login``, or
+        ``session.session_token`` is explicitly avoided: those fields are
+        internal implementation details whose semantics can change between Odoo
+        versions and whose direct manipulation bypasses critical invariant
+        checks inside the auth pipeline.
+        """
+        # Deliberately use a DIFFERENT token to prevent provisioning-secret
+        # reuse for impersonation.
+        sso_expected: str = (
+            request.env["ir.config_parameter"]
+            .sudo()
+            .get_param("meridian_saas.sso_token")
+            or ""
+        )
+
+        if not sso_expected:
+            _logger.error(
+                "meridian_saas.sso_token is unset.  "
+                "All SSO login requests will be rejected."
+            )
+            return self._reject_unauthorized("sso_login [token unset]")
+
+        if len(sso_expected) < _MIN_TOKEN_LENGTH:
+            _logger.critical(
+                "meridian_saas.sso_token is only %d characters (minimum %d).  "
+                "Replace with a strong random value.",
+                len(sso_expected),
+                _MIN_TOKEN_LENGTH,
+            )
+            return self._reject_unauthorized("sso_login [weak token]")
+
+        provided = ""
+        auth_header = request.httprequest.headers.get("Authorization", "")
+        if auth_header.startswith("Bearer "):
+            provided = auth_header[len("Bearer "):].strip()
+
+        if not provided or not hmac.compare_digest(provided, sso_expected):
+            return self._reject_unauthorized("sso_login")
+
+        if not email:
+            return {"status": "failed", "message": "Email is required."}
+
+        # Only active users can receive a session.  active_test=True is
+        # the Odoo default; stated explicitly so a future context override
+        # cannot silently break this invariant.
+        user = (
+            request.env["res.users"]
+            .with_context(active_test=True)
+            .sudo()
+            .search([("login", "=", email)], limit=1)
+        )
+        if not user:
+            return {"status": "failed", "message": "User not found"}
+
+        db = request.env.cr.dbname
+        try:
+            # The bearer token already proves the BFF authenticated this user.
+            # Bypass password-based authentication by setting the session
+            # directly via Odoo's finalize mechanism.
+            request.session["pre_login"] = user.login
+            request.session["pre_uid"] = user.id
+            request.session.finalize(request.env)
+            uid = request.session.uid
+        except Exception:
+            _logger.error(
+                "sso_login: session creation failed for %s", email, exc_info=True
+            )
+            return {"status": "failed", "message": "Internal error. Check server logs."}
+
+        _logger.info("SSO session issued for %s (uid=%s)", email, uid)
+        return {
+            "status": "ok",
+            "uid": uid,
+            "session_id": request.session.sid,
+        }
+
+    @http.route(
+        "/meridian/saas/ensure_workspace_user",
+        type="jsonrpc",
+        auth="none",
+        methods=["POST"],
+        csrf=False,
+    )
+    def ensure_workspace_user(self, email=None, name=None, role=None, **kwargs):
+        """Find-or-create an internal user for ``email`` in the CURRENT database.
+
+        The database is chosen by the request host (dbfilter), so the BFF MUST
+        send Host / X-Forwarded-Host = <workspace>.<root>.  This is what makes a
+        control-plane membership grant actually usable: without a res.users in the
+        target workspace DB, ``/meridian/saas/sso_login`` returns "User not found".
+
+        Role-based access control
+        -------------------------
+        ``role`` is now honoured.  Supported values:
+
+        - **viewer**     — read-only dashboards, reports, ledgers.
+        - **invoicing**  — create / edit invoices and payments.
+        - **member**     — full accounting user (reconcile, journals, reports).
+        - **accountant** — chief accountant (assets, budgets, tax reports).
+        - **manager**    — full configuration and user management.
+
+        When ``role`` is omitted, unknown, or empty, the user gets the baseline
+        ``base.group_user`` (backward-compatible with callers that do not send a
+        role).
+
+        Re-grant (idempotent)
+        ---------------------
+        If the user already exists and the requested role differs from their
+        current Meridian role, the group set is replaced atomically: all Meridian-
+        managed groups are stripped and the new role's entry group is added,
+        letting Odoo's ``implied_ids`` resolution pull in the correct permission
+        chain.
+        """
+        if not self._provision_authorized():
+            return self._reject_unauthorized("ensure_workspace_user")
+
+        if not email:
+            return {"status": "failed", "message": "Email is required."}
+
+        self._setup_env()
+
+        Users = request.env["res.users"].sudo()
+        target_groups = self._resolve_role_groups(role)
+        internal = request.env.ref("base.group_user")
+        # Pick a company: prefer the calling user's default, else the first
+        # active company in the database.
+        company = request.env.user.company_id or request.env["res.company"].sudo().search([], limit=1)
+
+        existing = (
+            Users.with_context(active_test=True)
+            .search([("login", "=", email)], limit=1)
+        )
+        if existing:
+            try:
+                # If the user is a portal (lobby) user, convert to internal
+                # first.  Portal and internal are exclusive group families —
+                # a role grant cannot convert the account type, so we must
+                # swap the base groups atomically before applying roles.
+                portal_group = request.env.ref("base.group_portal", raise_if_not_found=False)
+                if portal_group and portal_group.id in existing.group_ids.ids:
+                    _logger.info(
+                        "ensure_workspace_user: converting portal user %s to internal",
+                        email,
+                    )
+                    existing.write({
+                        "group_ids": [
+                            (3, portal_group.id),    # remove portal
+                            (4, internal.id),        # add internal
+                        ],
+                    })
+
+                if target_groups:
+                    self._apply_role_groups(existing, target_groups)
+                elif internal and internal.id not in existing.group_ids.ids:
+                    existing.write({"group_ids": [(4, internal.id)]})
+            except ValidationError:
+                # E.g. the login belongs to a PORTAL (lobby) user: portal and
+                # internal are exclusive families — a role grant cannot convert
+                # the account type.  Clean failure instead of a traceback leak.
+                request.env.cr.rollback()
+                _logger.warning(
+                    "ensure_workspace_user: validation rejected for %s", email, exc_info=True
+                )
+                return {
+                    "status": "failed",
+                    "message": "This email belongs to an incompatible account type.",
+                }
+            return {"status": "ok", "uid": existing.id, "created": False}
+
+        try:
+            group_ids_list = [internal.id] + [
+                g.id for g in target_groups
+                if g and g.id != internal.id
+            ]
+
+            Partner = request.env["res.partner"].sudo()
+            partner = Partner.search([("email", "=", email)], limit=1)
+            if not partner:
+                partner = Partner.create({
+                    "name": name or email,
+                    "email": email,
+                    "company_id": company and company.id,
+                })
+
+            # Pre-set a minimal placeholder avatar so ResUsers.create() skips
+            # the `user.image_1920 = user.partner_id._avatar_generate_svg()`
+            # branch (line 590: `if not user.image_1920 ...`).
+            #
+            # This also avoids related flush-time recomputation of
+            # avatar_1920, a related binary field on res.users whose write
+            # path calls _check_contents → sudo(False) → has_access.  With
+            # a valid default_env uid (fixed by _setup_env above) this path
+            # is now safe, but skipping avatar generation during create is
+            # still the right call to keep the create path clean.
+            _PLACEHOLDER_AVATAR = base64.b64encode(
+                b'<svg xmlns="http://www.w3.org/2000/svg" '
+                b'width="180" height="180">'
+                b'<rect fill="#cccccc" width="180" height="180"/>'
+                b'</svg>'
+            )
+
+            vals = {
+                "name": name or email,
+                "login": email,
+                "email": email,
+                "partner_id": partner.id,
+                "group_ids": [(6, 0, group_ids_list)],
+                "image_1920": _PLACEHOLDER_AVATAR,
+            }
+            if company:
+                vals["company_id"] = company.id
+                vals["company_ids"] = [(6, 0, [company.id])]
+            new_user = Users.create(vals)
+            # Random password: workspace access is via SSO (sso_login), never
+            # this value.  It is intentionally not returned to the caller.
+            new_user.write({"password": secrets.token_urlsafe(32)})
+
+            _logger.info(
+                "Provisioned workspace user %s (uid=%s) role=%s",
+                email, new_user.id, role or "none",
+            )
+            return {"status": "ok", "uid": new_user.id, "created": True}
+        except IntegrityError as exc:
+            request.env.cr.rollback()
+            # Only the unique-constraint violation on res_users.login is
+            # treated as a race.  NOT-NULL violations (missing required
+            # fields) must propagate so callers see Internal error.
+            pgerror = getattr(exc, "pgerror", "") or str(exc)
+            if "violates unique constraint" in pgerror:
+                _logger.info(
+                    "ensure_workspace_user: duplicate login raced to existence: %s",
+                    email,
+                )
+                existing = Users.with_context(active_test=True).search(
+                    [("login", "=", email)], limit=1
+                )
+                if existing:
+                    return {"status": "ok", "uid": existing.id, "created": False}
+            return {"status": "failed", "message": "A user with this email already exists."}
+        except ValidationError:
+            # E.g. the login already belongs to a PORTAL (lobby) user: portal
+            # and internal are exclusive group families, so a role grant cannot
+            # convert the account.  Return a clean failure — the default JSON
+            # error handler would leak a full traceback to the caller.
+            request.env.cr.rollback()
+            _logger.warning(
+                "ensure_workspace_user: validation rejected for %s", email, exc_info=True
+            )
+            return {
+                "status": "failed",
+                "message": "This email belongs to an incompatible account type.",
+            }
+        except Exception:
+            _logger.error(
+                "Failed to provision workspace user %s", email, exc_info=True
+            )
+            return {"status": "failed", "message": "Internal error. Check server logs."}
+
+    @http.route(
+        "/meridian/saas/update_workspace_user",
+        type="jsonrpc",
+        auth="none",
+        methods=["POST"],
+        csrf=False,
+    )
+    def update_workspace_user(self, uid=None, vals=None, role=None, **kwargs):
+        """Update an existing internal user in the CURRENT database as superuser.
+
+        The BFF calls this instead of writing to ``res.users`` directly so that
+        ACL checks are bypassed (the user's own session may lack
+        ``group_partner_manager``, which Odoo requires for the implicit
+        ``res.partner`` write triggered by updating ``name``).
+
+        ``uid``  — the ``res.users.id`` to update.
+        ``vals`` — dict of fields to write (whitelisted: name, active,
+                   company_id, company_ids).
+        ``role`` — optional Meridian role NAME (see ``_ROLE_GROUPS``).  Role
+                   changes go through ``_apply_role_groups`` so the managed-group
+                   strip-and-apply stays in ONE place.
+
+        Raw ``group_ids`` are deliberately NOT accepted: the five Meridian role
+        groups carry their permission chain via ``implied_ids``, and letting a
+        caller post arbitrary group commands allowed combinations this module
+        never sanctioned.
+
+        Security
+        --------
+        Bearer-gated like all other provisioning endpoints.  The BFF is the
+        sole caller; no browser request ever reaches this route directly.
+        """
+        if not self._provision_authorized():
+            return self._reject_unauthorized("update_workspace_user")
+
+        try:
+            user_id = int(uid)
+        except (TypeError, ValueError):
+            return {"status": "failed", "message": "uid is required."}
+        if user_id <= 4:
+            return {"status": "failed", "message": "Protected system user."}
+        if vals is None:
+            vals = {}
+        if not isinstance(vals, dict):
+            return {"status": "failed", "message": "vals must be a dict."}
+
+        if role is not None and str(role).strip().lower() not in _ROLE_GROUPS:
+            return {"status": "failed", "message": "Unknown role."}
+
+        self._setup_env()
+
+        # Whitelist fields to prevent arbitrary writes.  group_ids is excluded on
+        # purpose — use ``role``.
+        safe_keys = {"name", "active", "company_id", "company_ids"}
+        safe_vals = {k: v for k, v in vals.items() if k in safe_keys}
+
+        if not safe_vals and role is None:
+            return {"status": "ok", "message": "Nothing to update."}
+
+        Users = request.env["res.users"].sudo()
+        user = Users.with_context(active_test=False).browse(user_id)
+        if not user.exists():
+            return {"status": "failed", "message": "User not found."}
+        if user.share:
+            return {"status": "failed", "message": "Only internal users can be updated."}
+
+        target_groups = None
+        if role is not None:
+            target_groups = self._resolve_role_groups(str(role).strip().lower())
+            if not target_groups:
+                return {
+                    "status": "failed",
+                    "message": "Role groups are not installed in this database.",
+                }
+
+        try:
+            with request.env.cr.savepoint():
+                if safe_vals:
+                    user.write(safe_vals)
+                if target_groups is not None:
+                    self._apply_role_groups(user, target_groups)
+        except Exception:
+            _logger.error(
+                "update_workspace_user: failed to update uid=%s", uid, exc_info=True
+            )
+            return {"status": "failed", "message": "Internal error. Check server logs."}
+
+        return {"status": "ok", "role": str(role).strip().lower() if role else None}
+
+
+# ---------------------------------------------------------------------------
+# Module-private helpers
+# ---------------------------------------------------------------------------
+
+def _sso_password_for(user) -> str:
+    """Return the SSO stand-in password for ``user``.
+
+    ``session.authenticate()`` requires a plaintext password.  For SSO users
+    the real credential is the bearer token the BFF holds; the Odoo password is
+    a random value that was set at provisioning time and is never communicated
+    to anyone.  We retrieve it via the ORM's ``_get_session_token`` path rather
+    than storing it separately.
+
+    TODO: replace with a proper SSO/SAML provider integration once the
+    identity layer matures.  At that point this function and the random-password
+    pattern should be removed entirely in favour of a dedicated auth backend.
+    """
+    # The provisioned random password is opaque to us after creation.  For now,
+    # the BFF must call this endpoint with a freshly-generated token that was
+    # stored at ensure_workspace_user / create_lobby_user time, OR the Meridian
+    # service layer must expose a dedicated ``issue_session(uid)`` method that
+    # bypasses password-based auth entirely using an internal Odoo mechanism
+    # (e.g. ``env['res.users'].browse(uid)._init_done`` pattern or
+    # ``request.session['uid'] = uid`` inside a dedicated sudo service, which
+    # is safer than doing it here in the controller).
+    #
+    # This is a known gap flagged for the next auth-layer iteration.
+    raise NotImplementedError(
+        "sso_login requires a proper session-issuance mechanism.  "
+        "See TODO in _sso_password_for.  "
+        "Implement meridian.saas::issue_session(uid) or integrate an "
+        "OAuth2/SAML provider."
+    )

@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo noupdate="1">
+  <!--
+    Current frozen kernel for the US GAAP route. Checksums are the sha256 of
+    {"metadata", "layer", "kernel"} (sorted, compact) over docs/odoo/kernel_v2025.3.json
+    and match what qbo.standard.account._ensure_poseidon_kernel_versions computes
+    on bootstrap, so the static seed and the dynamic import never diverge.
+  -->
+  <record id="poseidon_kernel_2025_3_l0" model="poseidon.kernel.version">
+    <field name="name">Kernel 2025.3 L0</field>
+    <field name="kernel_version">2025.3</field>
+    <field name="gaap_basis">US_GAAP</field>
+    <field name="kernel_layer">L0</field>
+    <field name="status">frozen</field>
+    <field name="effective_from">2026-06-03</field>
+    <field name="checksum">b3c6f41674e248f4f2fa52b15522edf7686b8ef5e13cd8a37af465cef1023aea</field>
+    <field name="active" eval="True"/>
+    <field name="notes">Seeded from docs/odoo/kernel_v2025.3.json. Authority: frozen, US GAAP, L0. Patch over 2025.2 (15900/49000 polarity, L2 derived_from fixes).</field>
+  </record>
+
+  <record id="poseidon_kernel_2025_3_l1" model="poseidon.kernel.version">
+    <field name="name">Kernel 2025.3 L1</field>
+    <field name="kernel_version">2025.3</field>
+    <field name="gaap_basis">US_GAAP</field>
+    <field name="kernel_layer">L1</field>
+    <field name="status">frozen</field>
+    <field name="effective_from">2026-06-03</field>
+    <field name="checksum">6a5b4d6188b837260372444e5d1b0034655ef40629f7c9b87cb927f79ac8916e</field>
+    <field name="active" eval="True"/>
+    <field name="notes">Seeded from docs/odoo/kernel_v2025.3.json. Authority: frozen, US GAAP, L1 (default operational layer).</field>
+  </record>
+
+  <record id="poseidon_kernel_2025_3_l2" model="poseidon.kernel.version">
+    <field name="name">Kernel 2025.3 L2</field>
+    <field name="kernel_version">2025.3</field>
+    <field name="gaap_basis">US_GAAP</field>
+    <field name="kernel_layer">L2</field>
+    <field name="status">frozen</field>
+    <field name="effective_from">2026-06-03</field>
+    <field name="checksum">4e22718e61a9f3f5c39ed33409fcf84fe8dbfdef40bec4a93282e6385ceaef12</field>
+    <field name="active" eval="True"/>
+    <field name="notes">Seeded from docs/odoo/kernel_v2025.3.json. Authority: frozen, US GAAP, L2 (60000 rolls up 63000-67000).</field>
+  </record>
+
+  <!--
+    Superseded prior kernel. Kept for historical traceability (accounts may still
+    reference it) but deactivated so the active kernel resolves to 2025.3. Fresh
+    installs create it inactive; existing databases are retired by the
+    19.0.1.1.0 post-migration.
+  -->
+  <record id="poseidon_kernel_2025_2_l0" model="poseidon.kernel.version">
+    <field name="name">Kernel 2025.2</field>
+    <field name="kernel_version">2025.2</field>
+    <field name="gaap_basis">US_GAAP</field>
+    <field name="kernel_layer">L0</field>
+    <field name="status">deprecated</field>
+    <field name="effective_from">2025-12-24</field>
+    <field name="checksum">6a84b95b61d45d37101054d6fd1720a90b3c08d394c19ae4910763f998ecdf6a</field>
+    <field name="active" eval="False"/>
+    <field name="notes">Superseded by 2025.3. Seeded from Aequitas governance/canon/kernels/kernel_2025.2.*. Retained for traceability.</field>
+  </record>
+</odoo>

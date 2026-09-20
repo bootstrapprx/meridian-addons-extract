@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <data noupdate="1">
+        <record id="bundle_poseidon" model="kodoo.mcp.bundle">
+            <field name="name">Poseidon / Meridian</field>
+            <field name="key">poseidon</field>
+            <field name="module">poseidon_mcp</field>
+            <field name="description">Poseidon operational tools and actions on Meridian's environment.</field>
+            <field name="sequence">85</field>
+        </record>
+    </data>
+</odoo>

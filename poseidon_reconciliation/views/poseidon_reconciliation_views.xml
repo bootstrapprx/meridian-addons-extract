@@ -1,0 +1,110 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<odoo>
+  <record id="poseidon_bank_statement_line_view_list" model="ir.ui.view">
+    <field name="name">poseidon.bank.statement.line.list</field>
+    <field name="model">poseidon.bank.statement.line</field>
+    <field name="arch" type="xml">
+      <list>
+        <field name="date"/>
+        <field name="company_id"/>
+        <field name="description"/>
+        <field name="amount"/>
+        <field name="bank_account_id"/>
+        <field name="counterpart_account_id"/>
+        <field name="status"/>
+        <field name="move_id"/>
+      </list>
+    </field>
+  </record>
+
+  <record id="poseidon_bank_statement_line_view_form" model="ir.ui.view">
+    <field name="name">poseidon.bank.statement.line.form</field>
+    <field name="model">poseidon.bank.statement.line</field>
+    <field name="arch" type="xml">
+      <form>
+        <sheet>
+          <group>
+            <group>
+              <field name="company_id"/>
+              <field name="date"/>
+              <field name="amount"/>
+              <field name="description"/>
+              <field name="status"/>
+            </group>
+            <group>
+              <field name="bank_account_id"/>
+              <field name="counterpart_account_id"/>
+              <field name="move_id"/>
+              <field name="move_line_id"/>
+            </group>
+          </group>
+          <notebook>
+            <page string="Suggestions" name="suggestions">
+              <field name="suggestion_ids">
+                <list>
+                  <field name="account_id"/>
+                  <field name="amount"/>
+                  <field name="confidence"/>
+                  <field name="source"/>
+                  <field name="approved"/>
+                  <field name="rationale"/>
+                </list>
+              </field>
+            </page>
+            <page string="Source" name="source">
+              <group>
+                <field name="source"/>
+                <field name="source_file"/>
+                <field name="source_row"/>
+                <field name="external_id"/>
+                <field name="import_hash"/>
+                <field name="description_key"/>
+              </group>
+            </page>
+            <page string="Audit" name="audit">
+              <group>
+                <field name="confirmed_at"/>
+                <field name="confirmed_by_id"/>
+                <field name="ignored_at"/>
+                <field name="ignored_by_id"/>
+                <field name="ignore_reason"/>
+              </group>
+              <field name="note" nolabel="1"/>
+            </page>
+          </notebook>
+        </sheet>
+      </form>
+    </field>
+  </record>
+
+  <record id="poseidon_bank_statement_line_view_search" model="ir.ui.view">
+    <field name="name">poseidon.bank.statement.line.search</field>
+    <field name="model">poseidon.bank.statement.line</field>
+    <field name="arch" type="xml">
+      <search>
+        <field name="description"/>
+        <field name="company_id"/>
+        <field name="bank_account_id"/>
+        <field name="counterpart_account_id"/>
+        <filter name="unmatched" string="Unmatched" domain="[('status', '=', 'unmatched')]"/>
+        <filter name="suggested" string="Suggested" domain="[('status', '=', 'suggested')]"/>
+        <filter name="confirmed" string="Confirmed" domain="[('status', '=', 'confirmed')]"/>
+        <filter name="ignored" string="Ignored" domain="[('status', '=', 'ignored')]"/>
+      </search>
+    </field>
+  </record>
+
+  <record id="action_poseidon_reconciliation" model="ir.actions.act_window">
+    <field name="name">Poseidon Reconciliation</field>
+    <field name="res_model">poseidon.bank.statement.line</field>
+    <field name="view_mode">list,form</field>
+  </record>
+
+  <menuitem
+    id="menu_poseidon_reconciliation_root"
+    name="Poseidon Reconciliation"
+    parent="account.menu_finance_configuration"
+    action="action_poseidon_reconciliation"
+    groups="account.group_account_manager"
+    sequence="85"/>
+</odoo>

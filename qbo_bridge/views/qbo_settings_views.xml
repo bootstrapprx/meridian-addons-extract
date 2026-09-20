@@ -1,0 +1,133 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="res_config_settings_view_form_qbo_bridge" model="ir.ui.view">
+        <field name="name">res.config.settings.view.form.inherit.qbo.bridge</field>
+        <field name="model">res.config.settings</field>
+        <field name="inherit_id" ref="base.res_config_settings_view_form"/>
+        <field name="arch" type="xml">
+            <xpath expr="//app[@name='general_settings']" position="before">
+                <app name="qbo_bridge"
+                     string="QBO Bridge"
+                     data-string="QBO Bridge"
+                     data-key="qbo_bridge"
+                     logo="/qbo_bridge/static/description/icon.png"
+                     groups="qbo_bridge.group_qbo_bridge_manager">
+                    <block title="Intuit App Review URLs" name="qbo_bridge_intuit_urls">
+                        <setting id="qbo_public_domain_setting"
+                                 string="Public host domain"
+                                 help="Use this host in the Intuit app profile without the https protocol. The customer-facing URLs below are generated from this value.">
+                            <field name="qbo_public_domain" placeholder="meridian.kodoo.online"/>
+                            <div class="mt8">
+                                <button name="action_open_qbo_setup_hub"
+                                        type="object"
+                                        string="Open setup hub"
+                                        icon="oi-arrow-right"
+                                        class="btn-link"/>
+                                <button name="action_open_qbo_production_profile"
+                                        type="object"
+                                        string="Open production profile"
+                                        icon="oi-arrow-right"
+                                        class="btn-link ms-2"/>
+                            </div>
+                        </setting>
+                        <setting id="qbo_callback_domain_setting"
+                                 string="OAuth callback domain"
+                                 help="Workspace subdomain that receives the Intuit redirect. Leave empty to reuse the public host domain.">
+                            <field name="qbo_callback_domain" placeholder="md.kodoo.online"/>
+                        </setting>
+                        <setting id="qbo_public_url_reference"
+                                 string="Published URLs"
+                                 help="Copy these public URLs into the Intuit production app details and compliance tasks.">
+                            <div class="content-group">
+                                <div class="row mt8">
+                                    <label for="qbo_host_domain" string="Host domain" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_host_domain" readonly="1"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="qbo_launch_url" string="Launch URL" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_launch_url" readonly="1" widget="url"/>
+                                    <button name="action_open_qbo_launch_page"
+                                            type="object"
+                                            string="Open"
+                                            icon="oi-arrow-right"
+                                            class="btn-link"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="qbo_disconnect_url" string="Disconnect URL" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_disconnect_url" readonly="1" widget="url"/>
+                                    <button name="action_open_qbo_disconnect_page"
+                                            type="object"
+                                            string="Open"
+                                            icon="oi-arrow-right"
+                                            class="btn-link"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="qbo_connect_url" string="Connect/Reconnect URL" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_connect_url" readonly="1" widget="url"/>
+                                    <button name="action_open_qbo_connect_page"
+                                            type="object"
+                                            string="Open"
+                                            icon="oi-arrow-right"
+                                            class="btn-link"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="qbo_privacy_policy_url" string="Privacy policy URL" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_privacy_policy_url" readonly="1" widget="url"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="qbo_eula_url" string="EULA URL" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_eula_url" readonly="1" widget="url"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="qbo_oauth_redirect_url" string="OAuth redirect URI" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_oauth_redirect_url" readonly="1" widget="url"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="qbo_production_profile_url" string="Production profile" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_production_profile_url" readonly="1" widget="url"/>
+                                </div>
+                            </div>
+                        </setting>
+                    </block>
+                    <block title="Production Review Profile" name="qbo_bridge_review_profile">
+                        <setting id="qbo_hosting_profile_setting"
+                                 string="Hosting"
+                                 help="Keep the hosting answers aligned with the live production deployment before submitting to Intuit.">
+                            <div class="content-group">
+                                <div class="row mt8">
+                                    <label for="qbo_hosting_countries" string="Hosting countries" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_hosting_countries" placeholder="Brazil"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="qbo_hosting_ip_addresses" string="Hosting IP addresses" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_hosting_ip_addresses" placeholder="One public IP address per line"/>
+                                </div>
+                            </div>
+                        </setting>
+                        <setting id="qbo_compliance_profile_setting"
+                                 string="Compliance answers"
+                                 help="One answer per line. These values are also shown on the public production profile page.">
+                            <div class="content-group">
+                                <div class="row mt8">
+                                    <label for="qbo_accepted_connections" string="Accepted connections" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_accepted_connections"/>
+                                </div>
+                                <div class="row mt8">
+                                    <label for="qbo_regulated_industries" string="Regulated industries" class="col-lg-3 o_light_label"/>
+                                    <field name="qbo_regulated_industries"/>
+                                </div>
+                            </div>
+                        </setting>
+                    </block>
+                </app>
+            </xpath>
+        </field>
+    </record>
+
+    <record id="action_qbo_bridge_settings" model="ir.actions.act_window">
+        <field name="name">QBO Bridge Settings</field>
+        <field name="res_model">res.config.settings</field>
+        <field name="view_mode">form</field>
+        <field name="context">{'module': 'qbo_bridge', 'bin_size': False}</field>
+    </record>
+</odoo>

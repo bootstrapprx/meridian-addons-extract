@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<odoo>
+    <record id="meridian_saas.group_meridian_saas_manager" model="res.groups">
+        <field name="implied_ids" eval="[
+            (4, ref('fleet.fleet_group_manager')),
+            (4, ref('hr.group_hr_manager')),
+            (4, ref('hr_attendance.group_hr_attendance_manager')),
+            (4, ref('hr_recruitment.group_hr_recruitment_manager')),
+            (4, ref('kodoo_checklist.group_checklist_manager')),
+            (4, ref('lunch.group_lunch_manager')),
+            (4, ref('maintenance.group_equipment_manager')),
+            (4, ref('project.group_project_manager')),
+            (4, ref('survey.group_survey_manager'))
+        ]"/>
+    </record>
+</odoo>
