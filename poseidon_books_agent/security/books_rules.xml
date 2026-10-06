@@ -1,0 +1,17 @@
+<odoo>
+    <record id="books_intake_company_rule" model="ir.rule">
+        <field name="name">Historical intake: selected companies</field>
+        <field name="model_id" ref="model_poseidon_books_intake"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="books_inbox_owner_rule" model="ir.rule">
+        <field name="name">Books inbox: personal and company scoped</field>
+        <field name="model_id" ref="model_poseidon_books_inbox"/>
+        <field name="domain_force">[('user_id', '=', user.id), ('company_id', 'in', company_ids)]</field>
+    </record>
+    <record id="books_pull_company_rule" model="ir.rule">
+        <field name="name">Historical intake tasks: selected companies</field>
+        <field name="model_id" ref="model_poseidon_books_pull"/>
+        <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+    </record>
+</odoo>

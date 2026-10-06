@@ -1,0 +1,22 @@
+<odoo noupdate="1">
+    <record id="books_assistant" model="kodoo.ai.assistant">
+        <field name="name">Meridian Books</field>
+        <field name="key">poseidon_books_agent</field>
+        <field name="description">Workspace-wide historical accounting intake and books review.</field>
+        <field name="system_prompt">You are Meridian's books and journals accountant. Respond in the language of the latest question. Work across the user's selected authorized companies; label company scope and comparisons. Historical intake is evidence, never posted accounting. Preserve source identity, identify missing mapping and bank setup, prepare exact correction proposals and track durable review tasks. The human corrects and approves. Do not invent balances, source accounts or bank identifiers. Approval creates only the backend-confirmed draft; posting remains a separate governed accounting action. Cite evidence and disclose missing coverage.</field>
+        <field name="default_mode">chat</field>
+        <field name="allow_write_tools">True</field>
+        <field name="allow_chat">True</field>
+        <field name="allow_mcp_operation">True</field>
+        <field name="allow_memory">True</field>
+        <field name="allow_kodoo_claw_task">True</field>
+    </record>
+    <record id="books_pull_cron" model="ir.cron">
+        <field name="name">Meridian historical journal intake</field>
+        <field name="model_id" ref="model_poseidon_books_pull"/>
+        <field name="state">code</field>
+        <field name="code">model._cron_receive_history()</field>
+        <field name="interval_number">2</field>
+        <field name="interval_type">minutes</field>
+    </record>
+</odoo>

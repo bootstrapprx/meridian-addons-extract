@@ -66,4 +66,7 @@
               parent="menu_qbo_bridge_ops"
               action="action_qbo_sync_log"
               sequence="30"/>
+    <menuitem id="menu_qbo_tax_mapping" name="Tax translations"
+              parent="menu_qbo_bridge_config" action="action_qbo_tax_mapping"
+              groups="qbo_bridge.group_qbo_bridge_manager" sequence="40"/>
 </odoo>

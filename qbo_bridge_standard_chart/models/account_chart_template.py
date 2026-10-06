@@ -36,6 +36,9 @@ class AccountChartTemplate(models.AbstractModel):
             limit=1,
         )
 
+        if account and any(field in account._fields and account[field] for field in ("qbo_id", "qbo_source_name")):
+            raise UserError(_("This account is a historical QBO source. Activate a distinct Kernel destination instead of transforming the source."))
+
         action = "already_present"
         if not account:
             account = Account.search(
@@ -47,6 +50,8 @@ class AccountChartTemplate(models.AbstractModel):
             )
 
             if account:
+                if any(field in account._fields and account[field] for field in ("qbo_id", "qbo_source_name")):
+                    raise UserError(_("This code belongs to a historical QBO source. Choose a distinct Kernel destination code."))
                 account.write({"qbo_standard_account_id": standard_account.id})
                 action = "linked"
             else:

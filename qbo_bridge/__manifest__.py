@@ -1,6 +1,6 @@
 {
     'name': 'QBO Bridge',
-    'version': '19.0.1.2.2',
+    'version': '19.0.1.3.0',
     'category': 'Accounting/Localization',
     'summary': 'Pull-only bridge from QuickBooks Online into Kodoo (MVP)',
     'description': (
@@ -23,6 +23,7 @@
         'security/qbo_security.xml',
         'security/ir.model.access.csv',
         'data/qbo_cron.xml',
+        'views/qbo_tax_mapping_views.xml',
         'views/qbo_realm_views.xml',
         'views/qbo_company_mapping_views.xml',
         'views/qbo_account_bridge_rule_views.xml',

@@ -1282,6 +1282,9 @@ class QboStandardAccount(models.Model):
                     limit=1,
                 )
 
+            if account and any(field in account._fields and account[field] for field in ("qbo_id", "qbo_source_name")):
+                stats["blocked"] += 1
+                continue
             vals = standard_account.prepare_company_account_vals(company)
             if account:
                 if not update_existing:
@@ -1379,6 +1382,9 @@ class QboStandardAccount(models.Model):
                 )
 
             if account:
+                if any(field in account._fields and account[field] for field in ("qbo_id", "qbo_source_name")):
+                    stats["metadata_skipped"] += 1
+                    continue
                 if account.qbo_standard_account_id != standard:
                     account.write({"qbo_standard_account_id": standard.id})
                     stats["linked"] += 1
@@ -1432,6 +1438,9 @@ class QboStandardAccount(models.Model):
         for account in Account.search([("qbo_standard_account_id.kernel_layer", "=", "L3")]):
             standard = account.qbo_standard_account_id
             declared = standard.odoo_account_type
+            if any(field in account._fields and account[field] for field in ("qbo_id", "qbo_source_name")):
+                stats["blocked"].append((standard.code, account.account_type, declared))
+                continue
             if account.account_type == declared:
                 stats["unchanged"] += 1
                 continue
@@ -1451,6 +1460,8 @@ class QboStandardAccount(models.Model):
 
     @api.model
     def _safe_apply_kernel_metadata(self, account, standard):
+        if any(field in account._fields and account[field] for field in ("qbo_id", "qbo_source_name")):
+            return False
         vals = standard._poseidon_company_account_metadata_vals()
         if not vals:
             return True

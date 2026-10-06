@@ -1,0 +1,17 @@
+<odoo>
+  <record id="rule_account_operations_company" model="ir.rule">
+    <field name="name">Account operations company scope</field>
+    <field name="model_id" ref="model_poseidon_account_operations"/>
+    <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+  </record>
+  <record id="rule_account_operational_link_company" model="ir.rule">
+    <field name="name">Account operational_link company scope</field>
+    <field name="model_id" ref="model_poseidon_account_operational_link"/>
+    <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+  </record>
+  <record id="rule_account_operational_event_company" model="ir.rule">
+    <field name="name">Account operational_event company scope</field>
+    <field name="model_id" ref="model_poseidon_account_operational_event"/>
+    <field name="domain_force">[('company_id', 'in', company_ids)]</field>
+  </record>
+</odoo>

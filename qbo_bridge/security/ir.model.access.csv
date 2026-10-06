@@ -11,3 +11,6 @@ access_qbo_conflict_manager,qbo.conflict manager,model_qbo_conflict,qbo_bridge.g
 access_qbo_conflict_user,qbo.conflict user,model_qbo_conflict,qbo_bridge.group_qbo_bridge_user,1,1,0,0
 access_qbo_import_wizard_user,qbo.import.wizard user,model_qbo_import_wizard,qbo_bridge.group_qbo_bridge_user,1,1,1,1
 access_qbo_conflict_resolve_wizard_user,qbo.conflict.resolve.wizard user,model_qbo_conflict_resolve_wizard,qbo_bridge.group_qbo_bridge_user,1,1,1,1
+
+access_qbo_tax_mapping_user,qbo.tax.mapping user,model_qbo_tax_mapping,qbo_bridge.group_qbo_bridge_user,1,0,0,0
+access_qbo_tax_mapping_manager,qbo.tax.mapping manager,model_qbo_tax_mapping,qbo_bridge.group_qbo_bridge_manager,1,1,1,0

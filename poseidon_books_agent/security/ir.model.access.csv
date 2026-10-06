@@ -1,0 +1,7 @@
+id,name,model_id:id,group_id:id,perm_read,perm_write,perm_create,perm_unlink
+books_intake_accountant,Historical intake accountant,model_poseidon_books_intake,account.group_account_user,1,1,1,0
+books_inbox_accountant,Books inbox accountant,model_poseidon_books_inbox,account.group_account_user,1,1,1,0
+books_pull_accountant,Historical intake task accountant,model_poseidon_books_pull,account.group_account_user,1,1,1,0
+books_intake_manager,Historical intake manager,model_poseidon_books_intake,account.group_account_manager,1,1,1,0
+books_inbox_manager,Books inbox manager,model_poseidon_books_inbox,account.group_account_manager,1,1,1,0
+books_pull_manager,Historical intake task manager,model_poseidon_books_pull,account.group_account_manager,1,1,1,0

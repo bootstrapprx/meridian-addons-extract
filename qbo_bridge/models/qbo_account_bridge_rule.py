@@ -206,6 +206,7 @@ class QboAccountBridgeRule(models.Model):
     _description = "QBO canonical account bridge rule"
     _order = "sequence, canonical_code, id"
 
+    company_id = fields.Many2one("res.company", index=True, help="Empty means a legacy shared rule. Company-specific rules take precedence.")
     sequence = fields.Integer(default=10)
     active = fields.Boolean(default=True)
     name = fields.Char(
@@ -273,7 +274,9 @@ class QboAccountBridgeRule(models.Model):
 
     @api.model
     def match_qbo_record(self, record):
-        for rule in self.search([("active", "=", True)]):
+        rules = self.search([("active", "=", True), ("company_id", "=", self.env.company.id)])
+        rules |= self.search([("active", "=", True), ("company_id", "=", False)])
+        for rule in rules:
             if rule._matches_record(record):
                 return rule
         return self.browse()

@@ -13,6 +13,8 @@
 | `poseidon_mapping_governance` | Governance over account mapping decisions. |
 | `poseidon_us_tax` | US tax handling. |
 | `poseidon_company_group` | Multi-entity company grouping. |
+| `poseidon_books_agent` | Historical journal source intake, personal review inbox, durable journal-only QBO pulls and manager-approved draft creation. Installed ingress stages history before canonical accounting; the dedicated assistant shares Meridian provider and workspace scope. |
+| `poseidon_knowledge` | Workspace Knowledge bridge: company/group sharing, account links, revision checks and reviewed publication. |
 | `poseidon_mcp` | Exposes Poseidon models over MCP. Extends `kodoo_mcp`. |
 | `usgaap` | US GAAP umbrella app. Change entrypoints in `backend/addons/family-contracts.json`, regenerate profiles, then run `infra/scripts/sync-usgaap-app.py --write`; never hand-edit `profile.json` or manifest `depends`. |
 | `poseidon_cost_center` | Cost-center and operational-object analytic plans, plus the Meridian RPCs over them. Ships **mandatory** analytic applicability for bills (`5,6`), invoices (`4`) and timesheets, so posting requires a distribution once installed. Reads the activity template from `poseidon_us_tax` through a soft lookup — no dependency, and `available: False` when that module is absent. |

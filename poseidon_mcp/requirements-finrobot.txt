@@ -1,0 +1,3 @@
+# Optional reviewed V2 engine. Install in the MCP worker environment, not in the browser.
+# The similarly named PyPI V0 distribution is not this engine.
+finrobot @ git+https://github.com/AI4Finance-Foundation/FinRobot.git@2717499b8e30f242640af08c4ad9afd1113c2d45#subdirectory=finrobot_desktop

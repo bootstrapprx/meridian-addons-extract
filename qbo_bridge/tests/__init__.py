@@ -8,3 +8,5 @@ from . import (
     test_qbo_settings,
     test_qbo_sync_engine,
 )
+
+from . import test_qbo_conversion

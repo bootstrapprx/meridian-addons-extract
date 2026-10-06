@@ -1,6 +1,6 @@
 {
     "name": "Poseidon Accounting Kernel",
-    "version": "19.0.1.3.0",
+    "version": "19.0.1.4.0",
     "category": "Poseidon/Accounting",
     "summary": "Installed accounting kernel marker and immutability guardrails for Poseidon",
     "author": "Kodoo",
@@ -8,6 +8,7 @@
     "depends": ["account", "l10n_us", "l10n_us_account", "qbo_bridge_standard_chart"],
     "data": [
         "security/ir.model.access.csv",
+        "security/account_operations_rules.xml",
         "data/poseidon_kernel_version.xml",
         "data/poseidon_kernel_bootstrap.xml",
         "data/poseidon_kernel_banks.xml",

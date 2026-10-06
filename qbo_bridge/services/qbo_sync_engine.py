@@ -294,6 +294,12 @@ class QBOSyncEngine:
                         ],
                         limit=1,
                     )
+                    bridge_rule = self._match_account_bridge_rule(rec)
+                    if not canonical and bridge_rule and bridge_rule.canonical_code == odoo_vals["code"]:
+                        canonical = AccountAccount.search([
+                            ("company_ids", "=", self.mapping.company_id.id),
+                            ("code", "=", bridge_rule.canonical_code), ("qbo_id", "=", False),
+                        ], limit=1)
                     if canonical:
                         odoo_vals["code"] = f"QBO.{self._normalize_account_code(None, qbo_id)}"[:64]
                     domain = [
@@ -346,29 +352,32 @@ class QBOSyncEngine:
             t0 = time.monotonic()
             qbo_id = rec.get("Id")
             try:
-                odoo_vals = self._map_invoice_to_odoo(rec)
-                existing = Move.search([("qbo_id", "=", qbo_id)], limit=1) if qbo_id else None
-                if existing:
-                    if self._detect_conflict(existing, rec, "invoice"):
-                        self._create_conflict(existing, rec, "invoice")
-                        continue
-                    if existing.state == "draft":
-                        odoo_vals["invoice_line_ids"] = [
-                            (5, 0, 0),
-                            *odoo_vals["invoice_line_ids"],
-                        ]
-                        existing.write(odoo_vals)
-                        self._log("invoice", direction, "success", "update", qbo_id, existing, t0)
+                with self.env.cr.savepoint():
+                    odoo_vals = self._map_invoice_to_odoo(rec)
+                    existing = self._find_source_record("account.move", rec.get("_qbo_type", "invoice"), qbo_id)
+                    if existing:
+                        if self._detect_conflict(existing, rec, "invoice"):
+                            self._create_conflict(existing, rec, "invoice")
+                            continue
+                        if existing.state == "draft":
+                            odoo_vals["invoice_line_ids"] = [
+                                (5, 0, 0),
+                                *odoo_vals["invoice_line_ids"],
+                            ]
+                            existing.write(odoo_vals)
+                            existing._qbo_validate_conversion()
+                            self._log("invoice", direction, "success", "update", qbo_id, existing, t0)
+                        else:
+                            # Posted invoices are immutable here — record an honest skip
+                            # rather than implying we updated a posted move.
+                            self._log(
+                                "invoice", direction, "skipped", "skip", qbo_id, existing, t0,
+                                "Posted invoice left unchanged (pull cannot modify a posted move)",
+                            )
                     else:
-                        # Posted invoices are immutable here — record an honest skip
-                        # rather than implying we updated a posted move.
-                        self._log(
-                            "invoice", direction, "skipped", "skip", qbo_id, existing, t0,
-                            "Posted invoice left unchanged (pull cannot modify a posted move)",
-                        )
-                else:
-                    new_rec = Move.create(odoo_vals)
-                    self._log("invoice", direction, "success", "create", qbo_id, new_rec, t0)
+                        new_rec = Move.create(odoo_vals)
+                        new_rec._qbo_validate_conversion()
+                        self._log("invoice", direction, "success", "create", qbo_id, new_rec, t0)
             except Exception as exc:
                 self._log_upsert_exception("invoice", direction, qbo_id, None, t0, exc)
 
@@ -379,43 +388,46 @@ class QBOSyncEngine:
             t0 = time.monotonic()
             qbo_id = rec.get("Id")
             try:
-                vals = self._map_payment_to_odoo(rec)
-                if not vals:
-                    self._log(
-                        "payment",
-                        direction,
-                        "skipped",
-                        "skip",
-                        qbo_id,
-                        None,
-                        t0,
-                        "Missing local prerequisite (partner, journal, method or amount)",
-                    )
-                    continue
-                existing = Payment.search([("qbo_id", "=", qbo_id)], limit=1) if qbo_id else None
-                if existing:
-                    if existing.state == "draft":
-                        existing.write(vals)
-                        self._log("payment", direction, "success", "update", qbo_id, existing, t0)
-                    else:
+                with self.env.cr.savepoint():
+                    vals = self._map_payment_to_odoo(rec)
+                    if not vals:
                         self._log(
                             "payment",
                             direction,
                             "skipped",
                             "skip",
                             qbo_id,
-                            existing,
+                            None,
                             t0,
-                            "Posted payment left unchanged (pull cannot modify a posted payment)",
+                            "Missing local prerequisite (partner, journal, method or amount)",
                         )
-                else:
-                    new_rec = Payment.create(vals)
-                    self._log("payment", direction, "success", "create", qbo_id, new_rec, t0)
+                        continue
+                    existing = self._find_source_record("account.payment", rec.get("_qbo_type", "payment"), qbo_id)
+                    if existing:
+                        if existing.state == "draft":
+                            existing.write(vals)
+                            self._log("payment", direction, "success", "update", qbo_id, existing, t0)
+                        else:
+                            self._log(
+                                "payment",
+                                direction,
+                                "skipped",
+                                "skip",
+                                qbo_id,
+                                existing,
+                                t0,
+                                "Posted payment left unchanged (pull cannot modify a posted payment)",
+                            )
+                    else:
+                        new_rec = Payment.create(vals)
+                        self._log("payment", direction, "success", "create", qbo_id, new_rec, t0)
             except Exception as exc:
                 self._log_upsert_exception("payment", direction, qbo_id, None, t0, exc)
 
     def _map_payment_to_odoo(self, rec):
         """Map a QBO Payment/BillPayment to draft account.payment values."""
+        if rec.get("_qbo_type", "payment") not in ("payment", "bill_payment"):
+            raise UserError("This source payment type requires a supported translation.")
         if rec.get("_qbo_type") == "bill_payment":
             payment_type, partner_type = "outbound", "supplier"
             partner_ref = rec.get("VendorRef")
@@ -448,6 +460,7 @@ class QBOSyncEngine:
             return None
 
         return {
+            **self._payment_reference_values(rec, journal),
             "company_id": self.mapping.company_id.id,
             "partner_id": partner.id,
             "partner_type": partner_type,
@@ -485,6 +498,7 @@ class QBOSyncEngine:
                 match = journals.filtered(lambda j: j.default_account_id == account)[:1]
                 if match:
                     return match
+            return None
         return journals[:1]
 
     def _upsert_journal_entries(self, qbo_records, direction="pull"):
@@ -495,6 +509,12 @@ class QBOSyncEngine:
         resolvable accounts. Unbalanced or ambiguous rows are logged and
         skipped instead of forcing a bad accounting move.
         """
+        if "poseidon.books.intake" in self.env:
+            # Installed intake boundary preserves unresolved history for human review.
+            staged = self.env["poseidon.books.intake"]._stage_qbo(self.mapping, qbo_records)
+            for item in staged:
+                item.action_prepare()
+            return
         Move = self.env["account.move"].with_company(self.mapping.company_id)
         for rec in qbo_records:
             if self._is_live_journal_record(rec):
@@ -545,39 +565,42 @@ class QBOSyncEngine:
         t0 = time.monotonic()
         qbo_id = rec.get("Id")
         try:
-            vals = self._build_live_journal_move_vals(rec)
-            if not vals:
-                self._log(
-                    "journal_entry",
-                    direction,
-                    "skipped",
-                    "skip",
-                    qbo_id,
-                    None,
-                    t0,
-                    "Could not derive a balanced journal entry from the API payload",
-                )
-                return
-            existing = Move.search([("qbo_id", "=", qbo_id)], limit=1) if qbo_id else None
-            if existing:
-                if existing.state == "draft":
-                    vals["line_ids"] = [(5, 0, 0), *vals["line_ids"]]
-                    existing.write(vals)
-                    self._log("journal_entry", direction, "success", "update", qbo_id, existing, t0)
-                else:
+            with self.env.cr.savepoint():
+                vals = self._build_live_journal_move_vals(rec)
+                if vals:
+                    vals["qbo_source_type"] = "journal_entry"
+                if not vals:
                     self._log(
                         "journal_entry",
                         direction,
                         "skipped",
                         "skip",
                         qbo_id,
-                        existing,
+                        None,
                         t0,
-                        "Posted journal entry left unchanged (pull cannot modify a posted move)",
+                        "Could not derive a balanced journal entry from the API payload",
                     )
-            else:
-                move = Move.create(vals)
-                self._log("journal_entry", direction, "success", "create", qbo_id, move, t0)
+                    return
+                existing = self._find_source_record("account.move", "journal_entry", qbo_id)
+                if existing:
+                    if existing.state == "draft":
+                        vals["line_ids"] = [(5, 0, 0), *vals["line_ids"]]
+                        existing.write(vals)
+                        self._log("journal_entry", direction, "success", "update", qbo_id, existing, t0)
+                    else:
+                        self._log(
+                            "journal_entry",
+                            direction,
+                            "skipped",
+                            "skip",
+                            qbo_id,
+                            existing,
+                            t0,
+                            "Posted journal entry left unchanged (pull cannot modify a posted move)",
+                        )
+                else:
+                    move = Move.create(vals)
+                    self._log("journal_entry", direction, "success", "create", qbo_id, move, t0)
         except Exception as exc:
             self._log_upsert_exception("journal_entry", direction, qbo_id, None, t0, exc)
 
@@ -791,6 +814,8 @@ class QBOSyncEngine:
     def _map_invoice_to_odoo(self, rec):
         """Map a QBO Invoice or Bill to a reviewable Odoo draft."""
         qbo_type = rec.get("_qbo_type", "invoice")
+        if qbo_type not in ("invoice", "bill"):
+            raise UserError("This source document type requires a supported translation.")
         move_type = "out_invoice" if qbo_type == "invoice" else "in_invoice"
         journal_type = "sale" if qbo_type == "invoice" else "purchase"
         journal = self.env["account.journal"].with_company(self.mapping.company_id).search([
@@ -817,6 +842,7 @@ class QBOSyncEngine:
         if not invoice_lines:
             raise UserError("No account-backed lines could be found on this QBO document.")
         return {
+            **self._invoice_conversion_values(rec),
             "move_type": move_type,
             "ref": rec.get("DocNumber"),
             "invoice_date": rec.get("TxnDate"),
@@ -867,7 +893,13 @@ class QBOSyncEngine:
                 )
 
             quantity = self._float_value(detail.get("Qty")) or 1.0
-            values = {
+            tax_detail = rec.get("TxnTaxDetail") or {}
+            tax_code = self._invoice_tax_reference(rec, detail)
+            tax_mapping = self.env["qbo.tax.mapping"].search([
+                ("company_id", "=", self.mapping.company_id.id), ("realm_id", "=", self.mapping.realm_id.id),
+                ("source_tax_code", "=", tax_code), ("direction", "=", "sale" if qbo_type == "invoice" else "purchase")], limit=2)
+            taxes = tax_mapping.tax_ids if len(tax_mapping) == 1 else self.env["account.tax"]
+            values = {"tax_ids": [fields.Command.set(taxes.ids)],
                 "name": line.get("Description") or item_name or account_name or account.name,
                 "account_id": account.id,
                 "quantity": quantity,
@@ -890,13 +922,13 @@ class QBOSyncEngine:
     def _resolve_qbo_account(self, ref):
         account_id, account_name = self._qbo_ref(ref)
         Account = self.env["account.account"].with_company(self.mapping.company_id)
-        account = account_id and Account.search(
+        account = Account.search(
             [
                 ("company_ids", "=", self.mapping.company_id.id),
                 ("qbo_id", "=", account_id),
             ],
             limit=1,
-        )
+        ) if account_id else Account.browse()
         if not account and account_name:
             account = Account.search(
                 [
@@ -957,7 +989,7 @@ class QBOSyncEngine:
         }
 
     def _match_account_bridge_rule(self, rec):
-        return self.env["qbo.account.bridge.rule"].match_qbo_record(rec)
+        return self.env["qbo.account.bridge.rule"].with_company(self.mapping.company_id).match_qbo_record(rec)
 
     def _journal_group_key(self, rec):
         date_value = rec.get("TxnDate") or rec.get("Date") or rec.get("transaction date")
@@ -1302,6 +1334,120 @@ class QBOSyncEngine:
             parsed = parsed.astimezone(timezone.utc).replace(tzinfo=None)
         return parsed
 
+
+
+    def _find_source_record(self, model, source_type, source_id):
+        if not source_id:
+            raise UserError("A source record ID is required.")
+        Model = self.env[model].with_company(self.mapping.company_id)
+        base = [("company_id", "=", self.mapping.company_id.id), ("qbo_id", "=", str(source_id))]
+        records = Model.search(base + [("qbo_realm_id", "=", self.mapping.realm_id.id),
+                                      ("qbo_source_type", "=", source_type)], limit=2)
+        if len(records) > 1:
+            raise UserError("Multiple source records require review.")
+        legacy = Model.search(base + ["|", ("qbo_realm_id", "=", False), ("qbo_source_type", "=", False)], limit=1)
+        if legacy:
+            raise UserError("Legacy source identity requires explicit connection review.")
+        return records
+
+    def _invoice_tax_reference(self, rec, detail):
+        # Intuit's US taxable line marker is distinct from the transaction tax code.
+        line_code, _name = self._qbo_ref(detail.get("TaxCodeRef"))
+        document_code, _name = self._qbo_ref((rec.get("TxnTaxDetail") or {}).get("TxnTaxCodeRef"))
+        if line_code == "TAX" and document_code:
+            return document_code
+        return line_code or document_code
+
+    def _invoice_conversion_values(self, rec):
+        import math
+        tax_detail = rec.get("TxnTaxDetail") or {}
+        if not isinstance(tax_detail, dict):
+            raise UserError("Invalid source tax evidence.")
+        def amount(value):
+            return type(value) in (int, float) and math.isfinite(value)
+        currency_ref = rec.get("CurrencyRef") or {}
+        currency = currency_ref.get("value") if isinstance(currency_ref, dict) else None
+        codes = []
+        signatures = []
+        reasons = []
+        for line in rec.get("Line") or []:
+            if line.get("DetailType") == "SubTotalLineDetail" or not self._float_value(line.get("Amount")):
+                continue
+            if line.get("DetailType") in ("DiscountLineDetail", "GroupLineDetail"):
+                reasons.append("This source discount/group shape requires review.")
+            detail = line.get(line.get("DetailType")) or {}
+            code = self._invoice_tax_reference(rec, detail)
+            codes.append(code)
+            mapping = self.env["qbo.tax.mapping"].search([
+                ("company_id", "=", self.mapping.company_id.id), ("realm_id", "=", self.mapping.realm_id.id),
+                ("source_tax_code", "=", code),
+                ("direction", "=", "sale" if rec.get("_qbo_type", "invoice") == "invoice" else "purchase")], limit=2)
+            signatures.append(self.env["account.move"]._qbo_tax_signature(mapping.tax_ids))
+        return {"qbo_realm_id": self.mapping.realm_id.id, "qbo_source_type": rec.get("_qbo_type", "invoice"),
+            "qbo_conversion_evidence": {"total_present": amount(rec.get("TotalAmt")),
+                "tax_present": amount(tax_detail.get("TotalTax")), "total": rec.get("TotalAmt") if amount(rec.get("TotalAmt")) else None,
+                "tax": tax_detail.get("TotalTax") if amount(tax_detail.get("TotalTax")) else None,
+                "currency": currency, "tax_codes": codes, "tax_configuration": signatures, "reasons": reasons,
+                "tax_calculation": rec.get("GlobalTaxCalculation"), "source_tax_detail": tax_detail}}
+
+    def _payment_reference_values(self, rec, journal):
+        import math
+        evidence = []
+        reasons = []
+        ids = []
+        allocated = 0.0
+        payment_detail = rec.get("CheckPayment") or rec.get("CreditCardPayment") or {}
+        source_bank = rec.get("DepositToAccountRef") or rec.get("BankAccountRef") or (
+            payment_detail.get("BankAccountRef") if isinstance(payment_detail, dict) else None)
+        if not source_bank:
+            reasons.append("Source payment journal reference requires review.")
+        currency = journal.currency_id or self.mapping.company_id.currency_id
+        if currency != self.mapping.company_id.currency_id:
+            reasons.append("Foreign-currency payments require reviewed conversion evidence.")
+        partner_ref = rec.get("VendorRef") if rec.get("_qbo_type") == "bill_payment" else rec.get("CustomerRef")
+        partner_id, _name = self._qbo_ref(partner_ref)
+        allowed_type = "Bill" if rec.get("_qbo_type") == "bill_payment" else "Invoice"
+        for line in rec.get("Line") or []:
+            links = line.get("LinkedTxn") or []
+            if not links:
+                continue
+            value = line.get("Amount")
+            if len(links) != 1 or type(value) not in (int, float) or not math.isfinite(value) or value < 0:
+                reasons.append("Payment allocation is missing or ambiguous.")
+                evidence.append({"amount": value, "links": links})
+                continue
+            allocated += value
+            for link in links:
+                evidence.append({"amount": value, "source_id": link.get("TxnId"), "source_type": link.get("TxnType")})
+                if link.get("TxnType") != allowed_type:
+                    reasons.append("Payment reference has an incompatible document direction.")
+                    continue
+                try:
+                    moves = self._find_source_record("account.move", "bill" if allowed_type == "Bill" else "invoice", link.get("TxnId"))
+                except UserError as exc:
+                    reasons.append(str(exc))
+                    continue
+                if not moves or moves.partner_id.qbo_id != partner_id:
+                    reasons.append("Payment document reference is missing or has a different partner.")
+                    continue
+                ids.extend(moves.ids)
+        total = rec.get("TotalAmt", rec.get("Amount"))
+        ref = rec.get("CurrencyRef") or {}
+        source_currency = ref.get("value") if isinstance(ref, dict) else None
+        if source_currency != currency.name:
+            reasons.append("Source payment currency requires review.")
+        valid_total = type(total) in (int, float) and math.isfinite(total) and total >= 0
+        if not valid_total or currency.compare_amounts(allocated, total) > 0:
+            reasons.append("Payment allocations exceed or lack a valid source amount.")
+        if rec.get("LinkedTxn"):
+            reasons.append("Document-level payment references lack per-document allocation evidence.")
+            evidence.append({"links": rec["LinkedTxn"]})
+        return {"qbo_realm_id": self.mapping.realm_id.id, "qbo_source_type": rec.get("_qbo_type", "payment"),
+            "qbo_link_evidence": {"allocations": evidence, "source_currency": source_currency,
+                "native_currency": currency.name, "source_total": total if valid_total else None, "source_bank": source_bank, "journal_id": journal.id}, "qbo_link_reasons": list(dict.fromkeys(reasons)),
+            "qbo_linked_move_ids": [fields.Command.set(list(dict.fromkeys(ids)))],
+            "qbo_unapplied_amount": max(total - allocated, 0) if valid_total and not reasons else 0,
+            "qbo_link_state": "review" if reasons else "validated"}
 
 # ── Account type translation tables ──────────────────────────────────────────
 

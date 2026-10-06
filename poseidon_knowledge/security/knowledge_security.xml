@@ -1,0 +1,17 @@
+<odoo>
+    <record id="meridian_saas.group_meridian_saas_member" model="res.groups">
+        <field name="implied_ids" eval="[(4, ref('document_knowledge.group_document_user'))]"/>
+    </record>
+    <record id="meridian_saas.group_meridian_saas_accountant" model="res.groups">
+        <field name="implied_ids" eval="[(4, ref('document_page.group_document_editor'))]"/>
+    </record>
+    <record id="meridian_saas.group_meridian_saas_manager" model="res.groups">
+        <field name="implied_ids" eval="[(4, ref('document_page.group_document_manager'))]"/>
+    </record>
+    <record id="document_page.document_page_rule" model="ir.rule">
+        <field name="domain_force">['|', ('company_id', '=', False), '|', ('company_id', 'in', company_ids), ('meridian_company_ids', 'in', company_ids)]</field>
+    </record>
+    <record id="document_page.document_page_history_rule" model="ir.rule">
+        <field name="domain_force">['|', ('page_id.company_id', '=', False), '|', ('page_id.company_id', 'in', company_ids), ('page_id.meridian_company_ids', 'in', company_ids)]</field>
+    </record>
+</odoo>
