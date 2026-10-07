@@ -137,6 +137,14 @@ class QboCompanyMapping(models.Model):
         readonly=True,
         copy=False,
     )
+    qbo_authorized_company_name = fields.Char(
+        string="Attested QBO company name",
+        readonly=True,
+        copy=False,
+        help="The QuickBooks company name observed at the moment this realm was "
+        "authorised. The import provenance guard compares future pulls against "
+        "this attested value, not against the Odoo company name.",
+    )
 
     # ── Stats ─────────────────────────────────────────────────────────────────
     conflict_count = fields.Integer(
@@ -274,6 +282,13 @@ class QboCompanyMapping(models.Model):
         realm = self.realm_id.sudo()
         if realm.sync_mode != "pull_only" or realm.state != "connected" or not realm.refresh_token:
             raise UserError(_("Connect or re-authorise QuickBooks before starting live sync."))
+        if not realm.realm_id or realm.realm_id.startswith("AUTO_"):
+            # A pristine placeholder realm never received an Intuit realmId.
+            # Pulling from it would be a pull from an unbound identity.
+            raise UserError(_(
+                "QuickBooks is not bound to a real company yet. Connect the "
+                "realm and authorise it before starting live sync.",
+            ))
         from ..services.qbo_readiness import blocking  # noqa: PLC0415
 
         readiness = self.get_sync_readiness()

@@ -50,6 +50,21 @@ class BooksIntake(models.Model):
         if mapping.company_id not in self.env.user.company_ids:
             raise AccessError("Company is outside your workspace permissions.")
         self.check_access("create")
+        # Company Provenance Guard — offline resolution. A realm that does not
+        # belong to this company (or is not bound to a real Intuit company yet)
+        # is quarantined here: nothing is staged, so nothing can later be
+        # proposed, prepared or drafted. The full live echo check runs in the
+        # caller that pulls the records.
+        from odoo.addons.qbo_bridge.services.qbo_provenance import (  # noqa: PLC0415
+            ProvenanceResult,
+            verify_realm_binding,
+        )
+        binding = verify_realm_binding(self.env, mapping)
+        if binding is not ProvenanceResult.MATCH:
+            raise ValidationError(
+                "QuickBooks ownership could not be confirmed for this company. "
+                "Historical intake is quarantined (%s)." % binding.value
+            )
         # Serialize repeated pulls before the revision uniqueness check.
         self.env.cr.execute("SELECT id FROM qbo_company_mapping WHERE id = %s FOR UPDATE", [mapping.id])
         staged = self.browse()
@@ -325,6 +340,7 @@ class BooksPull(models.Model):
                     if not operator.env.user.active or not operator.env.user.has_group("account.group_account_manager"):
                         raise AccessError("Requester can no longer run this intake.")
                     engine = QBOSyncEngine(operator.env, operator.mapping_id)
+                    engine.verify_provenance()
                     records = engine.client.get_journal_entries(modified_since=None)
                     received = operator.env["poseidon.books.intake"]._stage_qbo(operator.mapping_id, records)
                     for item in received:

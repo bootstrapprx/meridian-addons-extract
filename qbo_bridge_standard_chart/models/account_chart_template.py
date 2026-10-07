@@ -1,4 +1,4 @@
-from odoo import _, api, fields, models
+from odoo import _, api, models
 from odoo.exceptions import UserError
 
 
@@ -6,7 +6,9 @@ class AccountChartTemplate(models.AbstractModel):
     _inherit = "account.chart.template"
 
     @api.model
-    def poseidon_activate_standard_account_for_company(self, company_id, standard_account_id=False, code=False):
+    def poseidon_activate_standard_account_for_company(
+        self, company_id, standard_account_id=False, code=False
+    ):
         company = self.env["res.company"].browse(company_id)
         if not company:
             raise UserError(_("Company not found."))
@@ -36,8 +38,15 @@ class AccountChartTemplate(models.AbstractModel):
             limit=1,
         )
 
-        if account and any(field in account._fields and account[field] for field in ("qbo_id", "qbo_source_name")):
-            raise UserError(_("This account is a historical QBO source. Activate a distinct Kernel destination instead of transforming the source."))
+        if account and any(
+            field in account._fields and account[field]
+            for field in ("qbo_id", "qbo_source_name")
+        ):
+            raise UserError(
+                _(
+                    "This account is a historical QBO source. Activate a distinct Kernel destination instead of transforming the source."
+                )
+            )
 
         action = "already_present"
         if not account:
@@ -50,8 +59,15 @@ class AccountChartTemplate(models.AbstractModel):
             )
 
             if account:
-                if any(field in account._fields and account[field] for field in ("qbo_id", "qbo_source_name")):
-                    raise UserError(_("This code belongs to a historical QBO source. Choose a distinct Kernel destination code."))
+                if any(
+                    field in account._fields and account[field]
+                    for field in ("qbo_id", "qbo_source_name")
+                ):
+                    raise UserError(
+                        _(
+                            "This code belongs to a historical QBO source. Choose a distinct Kernel destination code."
+                        )
+                    )
                 account.write({"qbo_standard_account_id": standard_account.id})
                 action = "linked"
             else:
@@ -73,7 +89,9 @@ class AccountChartTemplate(models.AbstractModel):
                 "code": account.code,
                 "name": account.name,
                 "internal_group": account.internal_group or account.account_type,
-                "locked": account.poseidon_kernel_locked if "poseidon_kernel_locked" in account._fields else False,
+                "locked": account.poseidon_kernel_locked
+                if "poseidon_kernel_locked" in account._fields
+                else False,
                 # Field-guarded like poseidon_kernel_locked above: the rollup
                 # parent lives in poseidon_accounting_kernel, which this module
                 # does not depend on. Reading it unguarded crashed activation on
@@ -88,7 +106,9 @@ class AccountChartTemplate(models.AbstractModel):
         }
 
     @api.model
-    def poseidon_publish_missing_standard_accounts(self, company_id, update_existing=True, required_only=False):
+    def poseidon_publish_missing_standard_accounts(
+        self, company_id, update_existing=True, required_only=False
+    ):
         company = self.env["res.company"].browse(company_id)
         if not company:
             raise UserError(_("Company not found."))
@@ -136,12 +156,19 @@ class AccountChartTemplate(models.AbstractModel):
             return False
         if account.poseidon_parent_account_id:
             return False
-        if "poseidon_kernel_locked" in account._fields and account.poseidon_kernel_locked:
+        if (
+            "poseidon_kernel_locked" in account._fields
+            and account.poseidon_kernel_locked
+        ):
             return False
         parent_code = (standard.rollup_to_l1_parent or "").strip()
         if not parent_code:
             return False
-        Account = self.env["account.account"].with_company(company).with_context(active_test=False)
+        Account = (
+            self.env["account.account"]
+            .with_company(company)
+            .with_context(active_test=False)
+        )
         parent = Account.search(
             [
                 ("company_ids", "=", company.id),
@@ -192,7 +219,9 @@ class AccountChartTemplate(models.AbstractModel):
             account = self.env["account.account"].browse(outcome["account"]["id"])
             outcome["account"]["parent_code"] = False
             if self._ensure_l3_parent_link(account, standard, company):
-                outcome["account"]["parent_code"] = account.poseidon_parent_account_id.code
+                outcome["account"]["parent_code"] = (
+                    account.poseidon_parent_account_id.code
+                )
             outcome["account"]["activity_tag"] = standard.activity_tag or False
             outcome["account"]["functional_group"] = standard.functional_group or False
             results.append(outcome)
@@ -214,9 +243,13 @@ class AccountChartTemplate(models.AbstractModel):
         """
         if "poseidon.us.tax.profile" not in self.env:
             return []
-        profile = self.env["poseidon.us.tax.profile"].sudo().search(
-            [("company_id", "=", company.id), ("active", "=", True)],
-            limit=1,
+        profile = (
+            self.env["poseidon.us.tax.profile"]
+            .sudo()
+            .search(
+                [("company_id", "=", company.id), ("active", "=", True)],
+                limit=1,
+            )
         )
         if not profile or not hasattr(profile, "poseidon_l3_activity_tags"):
             return []
@@ -260,7 +293,9 @@ class AccountChartTemplate(models.AbstractModel):
         if batch_type == "dashboard_account_set":
             batch_key = (batch_key or "").strip()
             if not batch_key:
-                raise UserError(_("A dashboard_account_set batch requires a batch_key."))
+                raise UserError(
+                    _("A dashboard_account_set batch requires a batch_key.")
+                )
             standards = StandardAccount.search(
                 domain + [("dashboard_account_sets", "!=", False)],
                 order="code",
@@ -280,7 +315,9 @@ class AccountChartTemplate(models.AbstractModel):
         )
 
     @api.model
-    def poseidon_activate_l3_batch(self, company_id, batch_type, batch_key=False, preview=False):
+    def poseidon_activate_l3_batch(
+        self, company_id, batch_type, batch_key=False, preview=False
+    ):
         """Activate an L3 batch for a company, preselected by tag / group / set.
 
         batch_type: activity_tag | functional_group | dashboard_account_set.
@@ -292,7 +329,11 @@ class AccountChartTemplate(models.AbstractModel):
         if not company:
             raise UserError(_("Company not found."))
         batch_type = (batch_type or "").strip().lower()
-        if batch_type not in ("activity_tag", "functional_group", "dashboard_account_set"):
+        if batch_type not in (
+            "activity_tag",
+            "functional_group",
+            "dashboard_account_set",
+        ):
             raise UserError(
                 _(
                     "Unknown L3 batch type '%(batch)s'. Use activity_tag, "
@@ -347,7 +388,11 @@ class AccountChartTemplate(models.AbstractModel):
         if not codes:
             raise UserError(_("No L3 account codes provided."))
 
-        Account = self.env["account.account"].with_company(company).with_context(active_test=False)
+        Account = (
+            self.env["account.account"]
+            .with_company(company)
+            .with_context(active_test=False)
+        )
         accounts = Account.search(
             [
                 ("company_ids", "=", company.id),
@@ -398,7 +443,11 @@ class AccountChartTemplate(models.AbstractModel):
         company = self.env["res.company"].browse(company_id)
         if not company:
             raise UserError(_("Company not found."))
-        Account = self.env["account.account"].with_company(company).with_context(active_test=False)
+        Account = (
+            self.env["account.account"]
+            .with_company(company)
+            .with_context(active_test=False)
+        )
         accounts = Account.search(
             [
                 ("company_ids", "=", company.id),

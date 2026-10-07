@@ -43,22 +43,28 @@ class QBOApiClient:
         accounts = client.get_accounts(modified_since=last_sync)
     """
 
-    def __init__(self, realm):
+    def __init__(self, realm, access_token=None):
         self.realm = realm.sudo()
+        self._access_token_override = access_token
 
     # =========================================================================
     # Low-level HTTP
     # =========================================================================
 
     def _headers(self):
+        token = self._access_token_override or self.realm.access_token
         return {
-            "Authorization": f"Bearer {self.realm.access_token}",
+            "Authorization": f"Bearer {token}",
             "Accept": "application/json",
             "Content-Type": "application/json",
         }
 
     def _ensure_token(self):
         """Refresh the access token if it is expired or within 60 s of expiry."""
+        if self._access_token_override:
+            # A caller-supplied token (OAuth bind probe) is already fresh;
+            # refreshing would require tokens that are not persisted yet.
+            return
         now = fields.Datetime.now()
         expiry = self.realm.token_expiry
         if not expiry or (expiry - now).total_seconds() < 60:

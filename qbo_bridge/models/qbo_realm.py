@@ -3,6 +3,7 @@ import hashlib
 import hmac
 import logging
 import os
+import re
 import secrets
 import time
 import urllib.parse
@@ -29,6 +30,57 @@ QBO_OAUTH_STATE_SECRET_PARAM = "qbo_bridge.oauth_state_secret"
 QBO_OAUTH_STATE_TTL_SECONDS = 60 * 60
 
 SCOPES = "com.intuit.quickbooks.accounting"
+
+# Placeholder pristine realms provisioned by the BFF before OAuth carry this
+# prefix and are not a real Intuit company id. A pull may never target one.
+QBO_REALM_PLACEHOLDER_PREFIX = "AUTO_"
+
+# Legal suffixes that legitimately vary between the Odoo company name and the
+# QuickBooks company name ("Fair Offers" vs "Fair Offers LLC"). Stripped before
+# the name cross-check so a naming difference is not read as a different entity.
+_COMPANY_LEGAL_SUFFIXES = frozenset({
+    "inc", "incorporated", "llc", "llp", "lp", "ltd", "limited", "corp",
+    "corporation", "co", "company", "plc", "gmbh", "ag", "sa", "sas", "sl",
+    "bv", "nv", "pty", "kk", "spa", "srl", "sarl", "oy", "ab", "as", "aps",
+})
+
+
+def normalise_company_name(value):
+    """Casefold/punctuation/suffix-normalise a company name for comparison."""
+    text = (value or "").casefold()
+    text = re.sub(r"[^\w\s]", " ", text)
+    tokens = [token for token in text.split() if token and token not in _COMPANY_LEGAL_SUFFIXES]
+    return " ".join(tokens)
+
+
+def company_names_match(left, right):
+    """Conservative match used only as a cross-check, never as identity.
+
+    Identity is realm-first; this only catches the gross "you authorised a
+    completely different company" case. It is deliberately lenient about legal
+    suffixes and containment so legitimate naming variants pass.
+    """
+    normalised_left = normalise_company_name(left)
+    normalised_right = normalise_company_name(right)
+    if not normalised_left or not normalised_right:
+        return False
+    return (
+        normalised_left == normalised_right
+        or normalised_left in normalised_right
+        or normalised_right in normalised_left
+    )
+
+
+class QboOAuthValidationError(UserError):
+    """A bind-time OAuth validation failure carrying a stable error code.
+
+    The controller maps ``code`` to the ``qbo_error`` query parameter so the
+    operator sees a specific reason instead of a generic failure.
+    """
+
+    def __init__(self, code, message=None):
+        self.code = code
+        super().__init__(message or _("QuickBooks authorization was rejected (%s).") % code)
 
 
 class QboRealm(models.Model):
@@ -113,6 +165,16 @@ class QboRealm(models.Model):
         help="Use the QBO sandbox API endpoint instead of production.",
     )
 
+    # ── Company binding safety ────────────────────────────────────────────────
+    allow_company_name_mismatch = fields.Boolean(
+        string="Allow company name mismatch",
+        groups="qbo_bridge.group_qbo_bridge_manager",
+        help="Manager-only escape hatch for a legitimate QuickBooks/Odoo naming "
+        "difference. It only relaxes the name cross-check on first connect; the "
+        "realmId echo and realm-ownership checks always apply and can never be "
+        "overridden.",
+    )
+
     # =========================================================================
     # Defaults
     # =========================================================================
@@ -140,20 +202,65 @@ class QboRealm(models.Model):
             hashlib.sha256,
         ).hexdigest()
 
-    def _encode_oauth_state(self):
+    def _resolve_connection_company(self, company_id=None):
+        """Resolve the single Meridian company this connection belongs to.
+
+        Authoritative on the backend: the company is derived from the realm's
+        mapping, and a caller-supplied ``company_id`` is only accepted when it
+        is one of the companies already mapped to this realm. A client value is
+        never authority.
+        """
         self.ensure_one()
-        payload = f"{self.id}:{int(time.time())}:{secrets.token_urlsafe(8)}"
+        mapped = self.mapping_ids.mapped("company_id")
+        if not mapped:
+            raise UserError(_(
+                "QuickBooks realm %(realm)s is not linked to a company yet."
+            ) % {"realm": self.name})
+        if company_id:
+            company = self.env["res.company"].sudo().browse(int(company_id)).exists()
+            if not company or company not in mapped:
+                raise UserError(_(
+                    "The selected company is not mapped to QuickBooks realm "
+                    "%(realm)s."
+                ) % {"realm": self.name})
+            return company
+        if len(mapped) == 1:
+            return mapped
+        raise UserError(_(
+            "Select a company before connecting QuickBooks realm %(realm)s."
+        ) % {"realm": self.name})
+
+    def _encode_oauth_state(self, company_id=None):
+        self.ensure_one()
+        company = self._resolve_connection_company(company_id)
+        payload = f"{self.id}:{int(time.time())}:{secrets.token_urlsafe(8)}:{company.id}"
         signature = self._sign_oauth_state_payload(payload)
         raw_state = f"{payload}:{signature}".encode()
         return base64.urlsafe_b64encode(raw_state).decode().rstrip("=")
 
     @api.model
     def _decode_oauth_state(self, state):
+        """Return ``(realm, company_id)`` for a signed OAuth state.
+
+        States minted before the company-bound format (four colon-separated
+        parts) are still accepted for the duration of one TTL so an in-flight
+        connect survives a deploy; ``company_id`` is ``None`` for those and the
+        caller must tolerate it. Remove the legacy branch once the TTL window
+        has elapsed.
+        """
         try:
             padding = "=" * (-len(state) % 4)
             raw_state = base64.urlsafe_b64decode(f"{state}{padding}").decode()
-            realm_id, issued_at, nonce, signature = raw_state.split(":", 3)
-            payload = f"{realm_id}:{issued_at}:{nonce}"
+            parts = raw_state.split(":")
+            if len(parts) == 4:
+                realm_id, issued_at, nonce, signature = parts
+                payload = f"{realm_id}:{issued_at}:{nonce}"
+                company_id = None
+            elif len(parts) == 5:
+                realm_id, issued_at, nonce, company_id, signature = parts
+                payload = f"{realm_id}:{issued_at}:{nonce}:{company_id}"
+            else:
+                raise ValueError("malformed state")
             expected_signature = self._sign_oauth_state_payload(payload)
             if not hmac.compare_digest(signature, expected_signature):
                 raise ValueError("signature mismatch")
@@ -163,7 +270,7 @@ class QboRealm(models.Model):
             realm = self.sudo().browse(int(realm_id))
             if not realm.exists():
                 raise ValueError("realm not found")
-            return realm
+            return realm, (int(company_id) if company_id else None)
         except Exception as exc:
             raise UserError(_("Invalid or expired QBO OAuth state. Start the connection again.")) from exc
 
@@ -189,7 +296,7 @@ class QboRealm(models.Model):
     # OAuth2 flow
     # =========================================================================
 
-    def action_get_authorization_url(self):
+    def action_get_authorization_url(self, company_id=None):
         """Build and return the Intuit OAuth2 authorization URL for the user to visit."""
         self.ensure_one()
 
@@ -206,7 +313,7 @@ class QboRealm(models.Model):
             "response_type": "code",
             "scope": SCOPES,
             "redirect_uri": self.redirect_uri,
-            "state": self._encode_oauth_state(),
+            "state": rec._encode_oauth_state(company_id),
         }
         url = f"{QBO_AUTH_URL}?{urllib.parse.urlencode(params)}"
         return {
@@ -215,10 +322,13 @@ class QboRealm(models.Model):
             "target": "new",
         }
 
-    def action_exchange_code(self, code, qbo_realm_id=None):
+    def action_exchange_code(self, code, qbo_realm_id=None, company_id=None):
         """Exchange the authorization code for access + refresh tokens.
 
         Called by the OAuth callback controller after the user grants access.
+        The Intuit-returned ``qbo_realm_id`` is validated against this realm's
+        identity before it is persisted; ``company_id`` comes from the signed
+        state and is re-validated against the realm's mapping.
         """
         self.ensure_one()
         resp = requests.post(
@@ -232,7 +342,76 @@ class QboRealm(models.Model):
             headers={"Accept": "application/json"},
             timeout=15,
         )
-        self._handle_token_response(resp, qbo_realm_id=qbo_realm_id)
+        self._handle_token_response(resp, qbo_realm_id=qbo_realm_id, company_id=company_id)
+
+    def _fetch_authorized_company(self, access_token):
+        """Probe CompanyInfo with a freshly issued, not-yet-persisted token.
+
+        Returns the CompanyInfo dict, or ``None`` when the probe is
+        unreachable. A transport failure must not recreate the cross-company
+        bug, but blocking a legitimate connect on a transient blip is also
+        wrong: the caller proceeds with the remaining identity checks and logs
+        the gap.
+        """
+        client = QBOApiClient(self, access_token=access_token)
+        try:
+            info = client.get_company_info()
+        except Exception as exc:  # noqa: BLE001 — probe must never re-raise
+            _logger.warning("QBO realm %s: companyinfo probe failed: %s", self.name, exc)
+            return None
+        return info.get("CompanyInfo") or {}
+
+    def _validate_bind(self, qbo_realm_id, company_id, access_token):
+        """Authoritative OAuth bind guard.
+
+        Order matters: identity checks come first and can never be overridden;
+        the company-name cross-check is last and is the only relaxable one.
+        Returns the live QBO company name to attest, or ``None`` when no probe
+        was possible.
+        """
+        qbo_realm_id = str(qbo_realm_id or "").strip()
+        if not qbo_realm_id:
+            raise QboOAuthValidationError("invalid_callback")
+
+        # A realmId already held by another qbo.realm is cross-tenant linking.
+        # Always blocked, never overridable.
+        other = self.sudo().search(
+            [("realm_id", "=", qbo_realm_id), ("id", "!=", self.id)], limit=1,
+        )
+        if other:
+            raise QboOAuthValidationError("realm_taken")
+
+        # A previously authorised realm must re-authorise to the same company.
+        already_bound = bool(self.refresh_token)
+        if already_bound and str(self.realm_id) != qbo_realm_id:
+            raise QboOAuthValidationError("realm_mismatch")
+
+        info = self._fetch_authorized_company(access_token)
+        if info is None:
+            _logger.warning(
+                "QBO realm %s: companyinfo unavailable during bind; proceeding "
+                "with realm identity checks only.", self.name,
+            )
+            return None
+
+        live_id = str(info.get("Id") or "").strip()
+        if live_id and live_id != qbo_realm_id:
+            # The token issued for realm X answered as realm Y. Always blocked.
+            raise QboOAuthValidationError("company_mismatch")
+
+        live_name = str(info.get("CompanyName") or info.get("LegalName") or "").strip()
+
+        if not already_bound and not self.allow_company_name_mismatch:
+            company = self._resolve_connection_company(company_id)
+            expected = company.name or ""
+            if live_name and expected and not company_names_match(live_name, expected):
+                self._set_error(_(
+                    "Authorized QuickBooks company '%(live)s' does not match the "
+                    "selected company '%(expected)s'. Nothing was connected."
+                ) % {"live": live_name, "expected": expected})
+                raise QboOAuthValidationError("company_mismatch")
+
+        return live_name or None
 
     def _refresh_access_token(self):
         """Use the refresh token to obtain a new access token.
@@ -258,13 +437,20 @@ class QboRealm(models.Model):
         )
         r._handle_token_response(resp)
 
-    def _handle_token_response(self, resp, qbo_realm_id=None):
+    def _handle_token_response(self, resp, qbo_realm_id=None, company_id=None):
         try:
             resp.raise_for_status()
             data = resp.json()
         except Exception as exc:
             self._set_error(str(exc))
             raise UserError(_("QBO token exchange failed: %s") % exc) from exc
+
+        # Validate the bind BEFORE persisting anything. On a mismatch the
+        # freshly issued tokens are discarded and no realm_id is written, so a
+        # wrong company can never become the persisted identity.
+        attested_name = None
+        if qbo_realm_id:
+            attested_name = self._validate_bind(qbo_realm_id, company_id, data["access_token"])
 
         expiry = fields.Datetime.now() + timedelta(seconds=data.get("expires_in", 3600))
         values = {
@@ -278,6 +464,17 @@ class QboRealm(models.Model):
         if qbo_realm_id:
             values["realm_id"] = qbo_realm_id
         self.sudo().write(values)
+
+        if attested_name:
+            # Attest the live QBO company name on the mapping. The import
+            # provenance guard compares future pulls against this attested
+            # value, never against the Odoo company name.
+            mappings = self.mapping_ids
+            if company_id:
+                mappings = mappings.filtered(lambda m: m.company_id.id == int(company_id))
+            if mappings:
+                mappings.sudo().write({"qbo_authorized_company_name": attested_name})
+
         _logger.info("QBO realm %s token refreshed; expires %s", self.name, expiry)
 
     def action_test_connection(self):

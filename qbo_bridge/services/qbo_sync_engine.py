@@ -91,6 +91,10 @@ class QBOSyncEngine:
         """Run all enabled entity syncs for this mapping."""
         m = self.mapping
         _logger.info("QBO sync start: %s", m.display_name)
+        # Company Provenance Guard — before ANY write, including the
+        # configuration snapshot. A MISMATCH or UNKNOWN aborts with zero
+        # objects persisted and zero state mutated.
+        self.verify_provenance()
         self._backfill = m.historical_backfill
         try:
             self._sync_configuration()
@@ -111,6 +115,51 @@ class QBOSyncEngine:
             if m.historical_backfill:
                 m.write({"historical_backfill": False})
         _logger.info("QBO sync complete: %s | %s", m.display_name, self._stats)
+
+    def verify_provenance(self):
+        """Company Provenance Guard. Raises unless provenance is MATCH.
+
+        The expected company is the mapping's company — the authoritative
+        execution context — never a client-supplied value. ``UNKNOWN`` is
+        non-persistible by contract: an unprobeable realm aborts the sync
+        rather than importing unverified data.
+
+        A rejection is auditable (``qbo.sync.log`` status ``rejected``) and
+        happens before any write, so a mismatch cannot contaminate the
+        company's ledger.
+        """
+        from .qbo_provenance import (  # noqa: PLC0415
+            ProvenanceResult,
+            provenance_error_message,
+            verify_company_provenance,
+        )
+
+        live_info = self._live_company_info()
+        result = verify_company_provenance(self.env, self.mapping, live_company_info=live_info)
+        if result is ProvenanceResult.MATCH:
+            return result
+        message = provenance_error_message(self.mapping, result)
+        _logger.error("QBO provenance %s for %s", result.value, self.mapping.display_name)
+        self._log(
+            "mapping", "pull", "rejected", "reject",
+            self.mapping.realm_id.realm_id, None, time.monotonic(), message,
+        )
+        raise UserError(message)
+
+    def _live_company_info(self):
+        """Probe the live QuickBooks company identity for this realm.
+
+        Returns the CompanyInfo dict or ``None`` when the probe is unreachable;
+        ``None`` resolves to UNKNOWN and therefore a rejection.
+        """
+        try:
+            info = self.client.get_company_info()
+        except Exception as exc:  # noqa: BLE001 — probe failure is UNKNOWN
+            _logger.warning(
+                "QBO provenance probe failed for %s: %s", self.mapping.display_name, exc,
+            )
+            return None
+        return info.get("CompanyInfo") or {}
 
     def _sync_configuration(self):
         """Receive company settings without applying legal or fiscal decisions."""
@@ -282,6 +331,9 @@ class QBOSyncEngine:
                     [
                         ("qbo_id", "=", qbo_id),
                         ("company_ids", "=", self.mapping.company_id.id),
+                        "|",
+                        ("qbo_realm_id", "=", self.mapping.realm_id.id),
+                        ("qbo_realm_id", "=", False),
                     ],
                     limit=1,
                 ) if qbo_id else None
@@ -332,7 +384,13 @@ class QBOSyncEngine:
             qbo_id = rec.get("Id")
             try:
                 odoo_vals = self._map_partner_to_odoo(rec)
-                existing = Partner.search([("qbo_id", "=", qbo_id)], limit=1) if qbo_id else None
+                existing = Partner.search([
+                    ("company_id", "=", self.mapping.company_id.id),
+                    ("qbo_id", "=", qbo_id),
+                    "|",
+                    ("qbo_realm_id", "=", self.mapping.realm_id.id),
+                    ("qbo_realm_id", "=", False),
+                ], limit=1) if qbo_id else None
                 if existing:
                     if self._detect_conflict(existing, rec, "partner"):
                         self._create_conflict(existing, rec, "partner")
@@ -703,7 +761,12 @@ class QBOSyncEngine:
             qbo_id = rec.get("Id")
             try:
                 odoo_vals = self._map_product_to_odoo(rec)
-                existing = Product.search([("qbo_id", "=", qbo_id)], limit=1) if qbo_id else None
+                existing = Product.search([
+                    "|",
+                    ("qbo_realm_id", "=", self.mapping.realm_id.id),
+                    ("qbo_realm_id", "=", False),
+                    ("qbo_id", "=", qbo_id),
+                ], limit=1) if qbo_id else None
                 if existing:
                     if self._detect_conflict(existing, rec, "product"):
                         self._create_conflict(existing, rec, "product")
@@ -778,6 +841,7 @@ class QBOSyncEngine:
             "qbo_source_account_number": rec.get("AcctNum", ""),
             "qbo_source_account_type": qbo_type,
             "qbo_source_account_subtype": rec.get("AccountSubType", ""),
+            "qbo_realm_id": self.mapping.realm_id.id,
             "company_ids": [(4, self.mapping.company_id.id)],
         }
         if (
@@ -808,6 +872,7 @@ class QBOSyncEngine:
             "active": rec.get("Active", True),
             "qbo_id": rec.get("Id"),
             "qbo_sync_token": rec.get("SyncToken"),
+            "qbo_realm_id": self.mapping.realm_id.id,
             "company_id": self.mapping.company_id.id,
         }
 
@@ -952,6 +1017,7 @@ class QBOSyncEngine:
             "default_code": rec.get("Sku", ""),
             "qbo_id": rec.get("Id"),
             "qbo_sync_token": rec.get("SyncToken"),
+            "qbo_realm_id": self.mapping.realm_id.id,
             "property_account_income_id": income_account,
             "property_account_expense_id": expense_account,
         }
@@ -1049,6 +1115,8 @@ class QBOSyncEngine:
             "journal_id": journal.id,
             "company_id": self.mapping.company_id.id,
             "line_ids": lines,
+            "qbo_realm_id": self.mapping.realm_id.id,
+            "qbo_source_type": "journal_entry",
         }
 
     def _qbo_class_distribution(self, rec):

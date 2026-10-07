@@ -1,6 +1,10 @@
 from odoo import _, fields, models
 from odoo.exceptions import UserError
 
+from odoo.addons.qbo_bridge.services.qbo_provenance import (  # noqa: PLC0415
+    ProvenanceResult,
+    verify_realm_binding,
+)
 from odoo.addons.qbo_bridge.services.qbo_sync_engine import QBOSyncEngine
 
 
@@ -50,6 +54,17 @@ class QboStandardAccountSyncWizard(models.TransientModel):
         lines = []
         for mapping in self.mapping_ids:
             try:
+                # Company Provenance Guard (offline): the master chart must
+                # never be applied to a company that has not been bound to its
+                # own realm — that is exactly the cross-tenant failure mode of
+                # the OAuth binding bug. A realm that cannot be attributed to
+                # this company is rejected before any write.
+                binding = verify_realm_binding(self.env, mapping)
+                if binding is not ProvenanceResult.MATCH:
+                    raise UserError(
+                        _("QuickBooks ownership could not be confirmed for %s (%s).")
+                        % (mapping.display_name, binding.value)
+                    )
                 account_model = self.env["account.account"].with_company(mapping.company_id)
                 account = account_model.search(
                     [
